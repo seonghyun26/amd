@@ -1,0 +1,44 @@
+# ── Claude / LLM ──────────────────────────────────────────────────────
+anthropic>=0.40.0
+
+# ── Config management ─────────────────────────────────────────────────
+hydra-core>=1.3.2
+omegaconf>=2.3.0
+
+# ── MD analysis ───────────────────────────────────────────────────────
+pyedr>=0.8.0          # GROMACS .edr parsing (pure Python, no C deps)
+mdtraj>=1.9.9         # Trajectory analysis (RMSD, contacts, etc.)
+
+# ── Experiment logging ────────────────────────────────────────────────
+wandb>=0.18.0
+
+# ── Paper retrieval ───────────────────────────────────────────────────
+requests>=2.31.0
+arxiv>=2.1.0
+pdfplumber>=0.11.0    # PDF text extraction with layout awareness
+
+# ── Templating ────────────────────────────────────────────────────────
+jinja2>=3.1.4
+
+# ── Validation ────────────────────────────────────────────────────────
+pydantic>=2.7.0
+
+# ── Retry logic ───────────────────────────────────────────────────────
+tenacity>=8.3.0
+
+# ── Numerics / data ──────────────────────────────────────────────────
+numpy>=1.26.0
+pandas>=2.2.0
+
+# ── Testing ───────────────────────────────────────────────────────────
+pytest>=8.2.0
+pytest-mock>=3.14.0
+
+# ── Development ───────────────────────────────────────────────────────
+black>=24.0.0
+ruff>=0.4.0
+
+# ── External binaries (installed separately, NOT via pip) ─────────────
+# GROMACS: https://www.gromacs.org/Downloads.html
+#   Build with PLUMED patch: plumed patch -p (after installing PLUMED)
+# PLUMED: https://www.plumed.org/doc-v2.9/user-doc/html/_installation.html

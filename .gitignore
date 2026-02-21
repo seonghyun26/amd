@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Hydra outputs
+outputs/
+multirun/
+.hydra/
+
+# WandB
+wandb/
+
+# GROMACS output files
+*.edr
+*.log
+*.xtc
+*.trr
+*.tpr
+*.cpt
+*.xvg
+*.gro
+*.pdb
+*.itp
+*.top
+mdout.mdp
+#exclude/
+
+# PLUMED output files
+COLVAR
+HILLS
+fes*.dat
+bck.*.dat
+
+# Downloaded PDFs
+papers/
+*.pdf
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.key
