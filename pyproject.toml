@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mda-agent"
+version = "0.1.0"
+description = "Claude Opus 4.6-powered agent for enhanced-sampling molecular dynamics with GROMACS + PLUMED"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["molecular-dynamics", "metadynamics", "GROMACS", "PLUMED", "LLM", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "anthropic>=0.40.0",
+    "hydra-core>=1.3.2",
+    "omegaconf>=2.3.0",
+    "pyedr>=0.8.0",
+    "mdtraj>=1.9.9",
+    "wandb>=0.18.0",
+    "requests>=2.31.0",
+    "arxiv>=2.1.0",
+    "pdfplumber>=0.11.0",
+    "jinja2>=3.1.4",
+    "pydantic>=2.7.0",
+    "tenacity>=8.3.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-mock>=3.14.0",
+    "black>=24.0.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+mda = "md_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["md_agent"]
+# Include Hydra configs and Jinja2 templates as package data
+[tool.hatch.build.targets.wheel.shared-data]
+"conf"      = "share/mda-agent/conf"
+"templates" = "share/mda-agent/templates"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "md_agent/",
+    "conf/",
+    "templates/",
+    "examples/",
+    "tests/",
+    "main.py",
+    "README.md",
+    "CLAUDE.md",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

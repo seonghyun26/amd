@@ -1,0 +1,11 @@
+name: ala_dipeptide
+forcefield: charmm36m      # matches prepare.sh / ala2.pdb in examples/alanine_dipeptide/
+water_model: none          # vacuum simulation (no solvent)
+box_type: dodecahedron
+box_distance: 1.5          # nm — matches editconf -d 1.5 in prepare.sh
+
+# Paths are resolved against work_dir by run_metadynamics.py / the agent
+# prepare.sh copies ala2.gro and topol.top into the run directory.
+topology: topol.top
+coordinates: ala2.gro
+index: null

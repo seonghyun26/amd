@@ -1,0 +1,24 @@
+# Collective variables for Alanine Dipeptide metadynamics
+# Backbone phi and psi dihedral angles
+#
+# Atom indices are 1-based (PLUMED convention).
+# These match the CHARMM36m topology built by prepare.sh (gmx pdb2gmx -ignh):
+#
+#   ACE:  HH31(1)  HH32(2)  HH33(3)  CAY(4)   CY(5)   OY(6)
+#   ALA:  N(7)     HN(8)    CA(9)    HA(10)   CB(11)   HB1(12) HB2(13) HB3(14) C(15) O(16)
+#   NME:  N(17)    HN(18)   CAT(19)  HT1(20)  HT2(21)  HT3(22)
+#
+# phi = CY(ACE)  – N(ALA)  – CA(ALA) – C(ALA)
+# psi = N(ALA)   – CA(ALA) – C(ALA)  – N(NME)
+
+cvs:
+  - name: phi
+    type: TORSION
+    atoms: [5, 7, 9, 15]   # CY – N – CA – C
+
+  - name: psi
+    type: TORSION
+    atoms: [7, 9, 15, 17]  # N – CA – C – N_NME
+
+colvar_stride: 100
+colvar_file: COLVAR

@@ -1,0 +1,18 @@
+_target_name: metadynamics
+
+# Well-tempered metadynamics for alanine dipeptide phi/psi
+hills:
+  height: 1.2              # kJ/mol — standard Gaussian height
+  sigma: [0.35, 0.35]      # radians — one per CV (phi and psi are torsions)
+  pace: 500                # steps between hill depositions
+  biasfactor: 10           # well-tempered bias factor
+  temp: ${gromacs.temperature}
+
+nsteps: 5000000            # 10 ns at dt=0.002 ps
+                           # Use 50_000_000 (100 ns) for fully converged FES
+
+convergence_check_interval: 500000   # check FES convergence every 1 ns
+
+analysis:
+  fes_bins: 100
+  min_bias_correction: true
