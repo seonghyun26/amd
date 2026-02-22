@@ -141,7 +141,7 @@ plt.savefig("ramachandran_fes.png", dpi=150)
 python main.py \
     system=ala_dipeptide \
     method=ala_metadynamics \
-    "plumed/collective_variables=ala_dipeptide_cvs" \
+    "plumed/collective_variables=ala_dipeptide" \
     gromacs=ala_vacuum \
     method.nsteps=2000000 \
     method.hills.height=2.0 \

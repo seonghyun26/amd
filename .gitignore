@@ -59,3 +59,4 @@ Thumbs.db
 # Secrets
 .env
 *.key
+.claude

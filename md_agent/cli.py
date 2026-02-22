@@ -185,7 +185,7 @@ _EXAMPLES = {
         "overrides": [
             "system=ala_dipeptide",
             "method=ala_metadynamics",
-            "plumed/collective_variables=ala_dipeptide_cvs",
+            "plumed/collective_variables=ala_dipeptide",
             "gromacs=ala_vacuum",
         ],
     },
@@ -234,18 +234,24 @@ def _run_example(name: str, work_dir: str, conf_dir: str) -> None:
     OmegaConf.update(cfg, "system.coordinates", str(gro))
 
     Path(work_dir).mkdir(parents=True, exist_ok=True)
-    shutil.copy(gro, Path(work_dir) / "system.gro")
-    shutil.copy(top, Path(work_dir) / "system.top")
+    shutil.copy(gro, Path(work_dir) / "ala2.gro")
+    shutil.copy(top, Path(work_dir) / "topol.top")
+    for itp in examples_dir.glob("*.itp"):
+        shutil.copy(itp, Path(work_dir) / itp.name)
 
     prompt = (
-        "Run a well-tempered metadynamics simulation of alanine dipeptide in vacuum. "
+        "Run a well-tempered metadynamics simulation of alanine dipeptide in vacuum "
+        "(CHARMM36m force field, dodecahedron periodic box). "
         f"Work directory: {work_dir}. "
-        "CVs: phi (atoms 5,7,9,15) and psi (atoms 7,9,15,17) — 1-based PLUMED indices. "
-        "system.gro and system.top are already in the work directory. "
+        "CVs (1-based PLUMED indices): "
+        "  phi = TORSION ATOMS=5,7,9,15   (CY_ACE – N_ALA – CA_ALA – C_ALA), "
+        "  psi = TORSION ATOMS=7,9,15,17  (N_ALA – CA_ALA – C_ALA – N_NME). "
+        "ala2.gro and topol.top are already in the work directory. "
         "Steps: validate_config → generate_mdp_from_config → generate_plumed_metadynamics "
-        "→ run_grompp → wandb_init_run (if project set) → run_mdrun → "
+        "→ run_grompp (with ala2.gro and topol.top) "
+        "→ wandb_init_run (if project set) → run_mdrun → "
         "wandb_start_background_monitor → wait_mdrun → analyze_hills → wandb_stop_monitor. "
-        "Summarise the final FES and convergence."
+        "Summarise the Ramachandran FES: identify C7eq, C7ax, and alpha-helix basins."
     )
 
     agent = MDAgent(cfg=cfg, work_dir=work_dir)
