@@ -60,3 +60,13 @@ Thumbs.db
 .env
 *.key
 .claude
+
+# Web — Node
+web/frontend/node_modules/
+web/frontend/.next/
+web/frontend/out/
+web/frontend/.eslintcache
+
+# Web — backend
+web/backend/__pycache__/
+web/__pycache__/

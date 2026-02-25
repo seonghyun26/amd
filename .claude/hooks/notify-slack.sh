@@ -45,7 +45,7 @@ case "$HOOK_EVENT" in
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": ($mention + ", your task is complete.")
+                "text": ("Your task is complete.")
               }
             },
             {

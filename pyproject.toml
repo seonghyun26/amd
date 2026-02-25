@@ -44,12 +44,18 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.4.0",
 ]
+web = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+]
 
 [project.scripts]
 mda = "md_agent.cli:main"
+mda-web = "web.backend.main:start"
 
 [tool.hatch.build.targets.wheel]
-packages = ["md_agent"]
+packages = ["md_agent", "web"]
 # Include Hydra configs and Jinja2 templates as package data
 [tool.hatch.build.targets.wheel.shared-data]
 "conf"      = "share/mda-agent/conf"

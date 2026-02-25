@@ -1,0 +1,110 @@
+import type { ConfigOptions, SessionConfig } from "./types";
+
+const BASE = "/api";
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────
+
+export async function createSession(cfg: SessionConfig): Promise<{ session_id: string; work_dir: string }> {
+  const res = await fetch(`${BASE}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      work_dir: cfg.workDir,
+      method: cfg.method,
+      system: cfg.system,
+      gromacs: cfg.gromacs,
+      plumed_cvs: cfg.plumed_cvs,
+    }),
+  });
+  return json(res);
+}
+
+export async function listSessions(): Promise<{ sessions: { session_id: string; work_dir: string }[] }> {
+  return json(await fetch(`${BASE}/sessions`));
+}
+
+// ── Config ────────────────────────────────────────────────────────────
+
+export async function getConfigOptions(): Promise<ConfigOptions> {
+  return json(await fetch(`${BASE}/config/options`));
+}
+
+export async function getSessionConfig(sessionId: string): Promise<{ config: Record<string, unknown> }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/config`));
+}
+
+export async function updateSessionConfig(
+  sessionId: string,
+  updates: Record<string, unknown>
+): Promise<{ updated: boolean }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates }),
+  });
+  return json(res);
+}
+
+// ── Files ─────────────────────────────────────────────────────────────
+
+export async function listFiles(
+  sessionId: string,
+  pattern = "*"
+): Promise<{ files: string[]; work_dir: string }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/files?pattern=${encodeURIComponent(pattern)}`));
+}
+
+export async function uploadFile(
+  sessionId: string,
+  file: File
+): Promise<{ saved_path: string; size_bytes: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/sessions/${sessionId}/files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  return json(res);
+}
+
+export function downloadUrl(sessionId: string, path: string): string {
+  return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}`;
+}
+
+// ── Analysis ──────────────────────────────────────────────────────────
+
+export async function getColvar(
+  sessionId: string,
+  filename = "COLVAR"
+): Promise<{ data: Record<string, number[]>; available: boolean }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/colvar?filename=${filename}`));
+}
+
+export async function getFes(
+  sessionId: string,
+  filename = "fes.dat"
+): Promise<{ data: { x: number[]; y: number[]; z: number[][] }; available: boolean }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/fes?filename=${filename}`));
+}
+
+export async function getEnergy(
+  sessionId: string,
+  terms?: string[]
+): Promise<{ data: Record<string, number[]>; available: boolean }> {
+  const params = terms ? terms.map((t) => `terms=${encodeURIComponent(t)}`).join("&") : "";
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy${params ? "?" + params : ""}`));
+}
+
+export async function getProgress(
+  sessionId: string
+): Promise<{ progress: { step: number; time_ps: number; ns_per_day: number } | null; available: boolean }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/progress`));
+}

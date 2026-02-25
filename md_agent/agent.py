@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, Optional
 
@@ -589,6 +590,80 @@ class MDAgent:
                 })
 
             self._messages.append({"role": "user", "content": tool_results})
+
+    def stream_run(self, user_message: str) -> Generator[dict, None, None]:
+        """Streaming version of run(). Yields SSE event dicts in real time.
+
+        Event types:
+          text_delta    — {"type": "text_delta", "text": str}
+          thinking      — {"type": "thinking", "thinking": str}
+          tool_start    — {"type": "tool_start", "tool_use_id": str, "tool_name": str, "tool_input": dict}
+          tool_result   — {"type": "tool_result", "tool_use_id": str, "tool_name": str, "result": Any}
+          agent_done    — {"type": "agent_done", "final_text": str}
+          error         — {"type": "error", "message": str}
+        """
+        self._messages.append({"role": "user", "content": user_message})
+
+        try:
+            while True:
+                with self._client.messages.stream(
+                    model="claude-opus-4-6",
+                    max_tokens=16000,
+                    thinking={"type": "adaptive"},
+                    system=SYSTEM_PROMPT,
+                    tools=TOOLS,
+                    messages=self._messages,
+                ) as stream:
+                    for event in stream:
+                        # Text and thinking deltas arrive as content_block_delta events
+                        if event.type == "content_block_delta":
+                            delta = event.delta
+                            if delta.type == "text_delta":
+                                yield {"type": "text_delta", "text": delta.text}
+                            elif delta.type == "thinking_delta":
+                                yield {"type": "thinking", "thinking": delta.thinking}
+
+                    final_message = stream.get_final_message()
+
+                # Preserve full content in history (same as run())
+                self._messages.append({"role": "assistant", "content": final_message.content})
+
+                if final_message.stop_reason == "end_turn":
+                    yield {"type": "agent_done", "final_text": self._extract_text(final_message.content)}
+                    return
+
+                if final_message.stop_reason != "tool_use":
+                    yield {"type": "agent_done", "final_text": self._extract_text(final_message.content)}
+                    return
+
+                # Execute all tool calls in this response
+                tool_results: list[dict[str, Any]] = []
+                for block in final_message.content:
+                    if block.type != "tool_use":
+                        continue
+                    yield {
+                        "type": "tool_start",
+                        "tool_use_id": block.id,
+                        "tool_name": block.name,
+                        "tool_input": block.input,
+                    }
+                    result = self._execute_tool(block.name, block.input)
+                    yield {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "tool_name": block.name,
+                        "result": result,
+                    }
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, default=str),
+                    })
+
+                self._messages.append({"role": "user", "content": tool_results})
+
+        except Exception as exc:
+            yield {"type": "error", "message": str(exc)}
 
     @staticmethod
     def _extract_text(content: list) -> str:

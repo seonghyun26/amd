@@ -1,0 +1,80 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { Send, StopCircle } from "lucide-react";
+import { useSessionStore } from "@/store/sessionStore";
+import { streamChat } from "@/lib/sse";
+
+export default function ChatInput({ sessionId }: { sessionId: string }) {
+  const [value, setValue] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+  const isStreaming = useSessionStore((s) => s.isStreaming);
+  const { addUserMessage, appendSSEEvent } = useSessionStore();
+
+  const handleSend = async () => {
+    const text = value.trim();
+    if (!text || isStreaming) return;
+
+    setValue("");
+    addUserMessage(text);
+
+    abortRef.current = new AbortController();
+
+    try {
+      for await (const event of streamChat(sessionId, text, abortRef.current.signal)) {
+        appendSSEEvent(event);
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        appendSSEEvent({ type: "error", message: String(err) });
+      } else {
+        appendSSEEvent({ type: "agent_done", final_text: "" });
+      }
+    }
+  };
+
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-800 p-3">
+      <div className="flex gap-2 items-end max-w-4xl mx-auto">
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Describe your simulation, ask about a paper, or give instructions…"
+          rows={3}
+          className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-100 placeholder-gray-400"
+        />
+        {isStreaming ? (
+          <button
+            onClick={handleStop}
+            className="p-2.5 rounded-xl bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300 hover:bg-red-200 transition-colors flex-shrink-0"
+            title="Stop"
+          >
+            <StopCircle size={20} />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!value.trim()}
+            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors flex-shrink-0"
+            title="Send (Enter)"
+          >
+            <Send size={20} />
+          </button>
+        )}
+      </div>
+      <p className="text-center text-xs text-gray-400 mt-1.5">Enter to send · Shift+Enter for newline</p>
+    </div>
+  );
+}
