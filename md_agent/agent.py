@@ -467,6 +467,40 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["directory"],
         },
     },
+    # ── Specialist agents ────────────────────────────────────────────────
+    {
+        "name": "delegate_to_specialist",
+        "description": (
+            "Delegate a complex sub-task to a specialist LangChain agent that has its own "
+            "dedicated tools and focused system prompt. Use this when:\n"
+            "  • 'paper_config'  — the user wants to extract MD settings from a published paper "
+            "(provide arXiv ID, DOI, title, or a keyword query)\n"
+            "  • 'analysis'      — the user wants a detailed analysis of existing simulation "
+            "results (convergence, free energy landscape, sampling quality)\n"
+            "  • 'cv_suggester'  — the user needs collective variable recommendations based on "
+            "their molecular system and sampling goal (agent reads the structure file)\n"
+            "The specialist runs autonomously and returns a structured report."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_type": {
+                    "type": "string",
+                    "enum": ["paper_config", "analysis", "cv_suggester"],
+                    "description": "Which specialist to invoke.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": (
+                        "Detailed task description for the specialist. "
+                        "For paper_config: include the arXiv ID or search query. "
+                        "For cv_suggester: describe the molecule and the biological process of interest."
+                    ),
+                },
+            },
+            "required": ["agent_type", "task"],
+        },
+    },
 ]
 
 # ── Agent ──────────────────────────────────────────────────────────────
@@ -540,7 +574,26 @@ class MDAgent:
             # File
             "read_file":  read_file,
             "list_files": list_files,
+            # Specialist agents
+            "delegate_to_specialist": self._delegate_to_specialist,
         }
+
+    def _delegate_to_specialist(self, agent_type: str, task: str) -> dict:
+        """Run a specialist LangChain agent synchronously and return its output."""
+        try:
+            if agent_type == "paper_config":
+                from md_agent.agents.paper_agent import PaperConfigAgent
+                return {"result": PaperConfigAgent().run(task)}
+            elif agent_type == "analysis":
+                from md_agent.agents.analysis_agent import AnalysisAgent
+                return {"result": AnalysisAgent(str(self.work_dir)).run(task)}
+            elif agent_type == "cv_suggester":
+                from md_agent.agents.cv_agent import CVAgent
+                return {"result": CVAgent(str(self.work_dir)).run(task)}
+            else:
+                return {"error": f"Unknown agent type: {agent_type}"}
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def _execute_tool(self, name: str, inputs: dict[str, Any]) -> Any:
         handler = self._handlers.get(name)

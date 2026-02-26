@@ -94,7 +94,7 @@ else
 fi
 
 echo ""
-echo "Starting MDA server → http://localhost:8000"
+echo "Starting AMD server → http://localhost:8000"
 echo "Press Ctrl+C to stop."
 echo ""
 

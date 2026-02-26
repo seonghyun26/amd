@@ -20,7 +20,10 @@ import {
   Binary,
   Layers,
   MessageSquare,
+  Bot,
 } from "lucide-react";
+import AgentModal from "@/components/agents/AgentModal";
+import type { AgentType } from "@/lib/agentStream";
 import SimulationStatus from "@/components/status/SimulationStatus";
 import EnergyPlot from "@/components/viz/EnergyPlot";
 import ColvarPlot from "@/components/viz/ColvarPlot";
@@ -194,9 +197,24 @@ function PillTabs({
 // ── Progress tab ───────────────────────────────────────────────────────
 
 function ProgressTab({ sessionId }: { sessionId: string }) {
+  const [agentOpen, setAgentOpen] = useState(false);
+
   return (
     <div className="p-4 space-y-4">
+      {/* Agent button */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-400">Simulation Status</span>
+        <button
+          onClick={() => setAgentOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-emerald-900/30 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800/40 transition-colors font-medium"
+        >
+          <Bot size={11} />
+          Analyse Results
+        </button>
+      </div>
+
       <SimulationStatus />
+
       <div className="space-y-4 pt-2">
         <div className="flex items-center gap-2">
           <div className="h-px flex-1 bg-gray-800" />
@@ -207,6 +225,10 @@ function ProgressTab({ sessionId }: { sessionId: string }) {
         <ColvarPlot sessionId={sessionId} />
         <RamachandranPlot sessionId={sessionId} />
       </div>
+
+      {agentOpen && (
+        <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
+      )}
     </div>
   );
 }
@@ -254,8 +276,22 @@ function SystemTab({ sessionId }: { sessionId: string }) {
   const molFiles = files.filter(isMolFile);
   const otherFiles = files.filter((f) => !isMolFile(f));
 
+  const [agentOpen, setAgentOpen] = useState(false);
+
   return (
     <div className="p-4 space-y-4">
+      {/* Agent button */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-400">System Files</span>
+        <button
+          onClick={() => setAgentOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-blue-900/30 border border-blue-800/50 text-blue-400 hover:bg-blue-800/40 transition-colors font-medium"
+        >
+          <Bot size={11} />
+          Extract from Paper
+        </button>
+      </div>
+
       {/* Molecule files */}
       <Section icon={<FlaskConical size={13} />} title="Molecule Files" accent="indigo">
         <div className="flex items-center justify-between -mt-1 mb-1">
@@ -334,6 +370,9 @@ function SystemTab({ sessionId }: { sessionId: string }) {
           fileName={viewer.name}
           onClose={() => setViewer(null)}
         />
+      )}
+      {agentOpen && (
+        <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
       )}
     </div>
   );
@@ -479,10 +518,21 @@ function MethodTab({
 
 // ── PLUMED tab ─────────────────────────────────────────────────────────
 
-function PlumedTab() {
+function PlumedTab({ sessionId }: { sessionId: string }) {
+  const [agentOpen, setAgentOpen] = useState(false);
+
   return (
     <div className="p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-200">PLUMED / Collective Variables</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-200">PLUMED / Collective Variables</h3>
+        <button
+          onClick={() => setAgentOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-indigo-900/30 border border-indigo-800/50 text-indigo-400 hover:bg-indigo-800/40 transition-colors font-medium"
+        >
+          <Bot size={11} />
+          Suggest CVs
+        </button>
+      </div>
 
       <Section icon={<Layers size={13} />} title="About PLUMED CVs" accent="indigo">
         <p className="text-xs text-gray-400 leading-relaxed">
@@ -509,6 +559,10 @@ function PlumedTab() {
           ))}
         </div>
       </Section>
+
+      {agentOpen && (
+        <AgentModal sessionId={sessionId} agentType="cv" onClose={() => setAgentOpen(false)} />
+      )}
     </div>
   );
 }
@@ -738,7 +792,7 @@ export default function MDWorkspace({ sessionId, onSessionCreated, onStartMD }: 
     system: <SystemTab sessionId={sessionId} />,
     gromacs: <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
     method: <MethodTab cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
-    plumed: <PlumedTab />,
+    plumed: <PlumedTab sessionId={sessionId} />,
   };
 
   return (

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MDA — MD Simulation Agent",
+  title: "AMD — Ahn MD",
   description: "Claude-powered molecular dynamics simulation assistant",
 };
 

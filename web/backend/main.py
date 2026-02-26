@@ -19,9 +19,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from web.backend.routers import analysis, auth, chat, config, files
+from web.backend.routers import agents, analysis, auth, chat, config, files
 
-app = FastAPI(title="MDA Web API", version="0.1.0")
+app = FastAPI(title="AMD Web API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(agents.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
@@ -50,7 +51,7 @@ if _static_dir.is_dir():
 
 
 def start():
-    """Entry point for the mda-web console script."""
+    """Entry point for the amd-web console script."""
     import uvicorn
 
     uvicorn.run(

@@ -1,6 +1,6 @@
 """SQLite user database with PBKDF2-SHA256 password hashing (stdlib only).
 
-DB location: $MDA_DB_PATH  or  ~/.mda/users.db
+DB location: $AMD_DB_PATH  or  ~/.amd/users.db
 
 Schema
 ------
@@ -20,12 +20,12 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────
 
-DB_PATH = Path(os.getenv("MDA_DB_PATH", str(Path.home() / ".mda" / "users.db")))
+DB_PATH = Path(os.getenv("AMD_DB_PATH", str(Path.home() / ".amd" / "users.db")))
 _ITERATIONS = 260_000
 
 # Default users seeded on first run.
 _DEFAULT_USERS: list[tuple[str, str]] = [
-    ("admin", "mda123"),
+    ("admin", "amd123"),
     ("hyun", "1126"),
 ]
 

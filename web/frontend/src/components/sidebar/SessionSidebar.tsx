@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname } from "@/lib/api";
@@ -92,6 +92,67 @@ function NicknameEditor({
   );
 }
 
+// ── Profile section ────────────────────────────────────────────────────
+
+function ProfileSection({ username, onLogout }: { username: string; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const initial = username ? username[0].toUpperCase() : "?";
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative px-3 py-3 border-t border-gray-800 flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-gray-800 transition-colors group"
+      >
+        {/* Avatar */}
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold shadow">
+          {initial}
+        </div>
+        {/* Name */}
+        <span className="flex-1 text-left text-xs font-medium text-gray-300 truncate group-hover:text-white transition-colors">
+          {username}
+        </span>
+        {/* Dots */}
+        <Settings size={12} className="text-gray-600 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
+      </button>
+
+      {/* Popover menu */}
+      {open && (
+        <div className="absolute bottom-full left-3 right-3 mb-1 bg-gray-800 border border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
+          {/* User info header */}
+          <div className="flex items-center gap-2.5 px-3 py-3 border-b border-gray-700">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-sm font-semibold shadow">
+              {initial}
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-white truncate">{username}</div>
+              <div className="text-[10px] text-gray-500">Signed in</div>
+            </div>
+          </div>
+          {/* Actions */}
+          <button
+            onClick={() => { setOpen(false); onLogout(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-gray-400 hover:text-red-400 hover:bg-gray-700/60 transition-colors"
+          >
+            <LogOut size={13} />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main sidebar ───────────────────────────────────────────────────────
 
 export default function SessionSidebar({ onNewSession, onSelectSession }: Props) {
@@ -117,10 +178,8 @@ export default function SessionSidebar({ onNewSession, onSelectSession }: Props)
           <FlaskConical size={14} className="text-white" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white leading-tight">MDA</div>
-          {username && (
-            <div className="text-[10px] text-gray-500 truncate">{username}</div>
-          )}
+          <div className="text-sm font-semibold text-white leading-tight">AMD</div>
+          <div className="text-[10px] text-gray-500">Ahn MD</div>
         </div>
       </div>
 
@@ -179,16 +238,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession }: Props)
         )}
       </div>
 
-      {/* Logout */}
-      <div className="px-3 py-3 border-t border-gray-800 flex-shrink-0">
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors"
-        >
-          <LogOut size={13} />
-          Sign out
-        </button>
-      </div>
+      <ProfileSection username={username ?? "user"} onLogout={handleLogout} />
     </aside>
   );
 }

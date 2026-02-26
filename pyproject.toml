@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mda-agent"
+name = "amd-agent"
 version = "0.1.0"
 description = "Claude Opus 4.6-powered agent for enhanced-sampling molecular dynamics with GROMACS + PLUMED"
 readme = "README.md"
@@ -35,6 +35,10 @@ dependencies = [
     "tenacity>=8.3.0",
     "numpy>=1.26.0",
     "pandas>=2.2.0",
+    # LangChain — specialist sub-agents
+    "langchain>=0.3.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-core>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -51,15 +55,15 @@ web = [
 ]
 
 [project.scripts]
-mda = "md_agent.cli:main"
-mda-web = "web.backend.main:start"
+amd = "md_agent.cli:main"
+amd-web = "web.backend.main:start"
 
 [tool.hatch.build.targets.wheel]
 packages = ["md_agent", "web"]
 # Include Hydra configs and Jinja2 templates as package data
 [tool.hatch.build.targets.wheel.shared-data]
-"conf"      = "share/mda-agent/conf"
-"templates" = "share/mda-agent/templates"
+"conf"      = "share/amd-agent/conf"
+"templates" = "share/amd-agent/templates"
 
 [tool.hatch.build.targets.sdist]
 include = [

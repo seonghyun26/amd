@@ -19,7 +19,7 @@ def _repo_conf_dir() -> str:
 
     for candidate in [
         Path(__file__).parents[2] / "conf",  # repo root/conf
-        pkg_dir.parents[1] / "share" / "mda-agent" / "conf",  # installed
+        pkg_dir.parents[1] / "share" / "amd-agent" / "conf",  # installed
     ]:
         if candidate.is_dir():
             return str(candidate)
@@ -33,7 +33,7 @@ def _load_hydra_cfg(overrides: list[str], work_dir: str):
 
     conf_dir = _repo_conf_dir()
     GlobalHydra.instance().clear()
-    with initialize_config_dir(config_dir=conf_dir, job_name="mda-web"):
+    with initialize_config_dir(config_dir=conf_dir, job_name="amd-web"):
         cfg = compose(
             config_name="config",
             overrides=overrides + [f"run.work_dir={work_dir}"],

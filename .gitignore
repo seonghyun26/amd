@@ -70,3 +70,5 @@ web/frontend/.eslintcache
 # Web — backend
 web/backend/__pycache__/
 web/__pycache__/
+*package-lock.json
+*package.json

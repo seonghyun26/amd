@@ -33,7 +33,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-4 shadow-lg">
             <FlaskConical size={28} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">MD Simulation Agent</h1>
+          <h1 className="text-2xl font-bold text-white">AMD</h1>
           <p className="mt-1 text-sm text-gray-400">Claude Opus 4.6 · GROMACS · PLUMED</p>
         </div>
 
@@ -85,9 +85,7 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
-          <p className="text-center text-xs text-gray-500">
-            Default: admin / mda123 · Set MDA_USERNAME / MDA_PASSWORD env vars to change
-          </p>
+
         </form>
       </div>
     </div>

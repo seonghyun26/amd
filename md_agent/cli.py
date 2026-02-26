@@ -58,14 +58,14 @@ def _load_hydra_cfg(
     from omegaconf import OmegaConf
 
     GlobalHydra.instance().clear()
-    with initialize_config_dir(config_dir=conf_dir, job_name="mda"):
+    with initialize_config_dir(config_dir=conf_dir, job_name="amd"):
         cfg = compose(config_name="config", overrides=overrides + [f"run.work_dir={work_dir}"])
     return cfg
 
 
 def _repo_conf_dir() -> str:
     """Return the conf/ directory, whether running from the repo or installed."""
-    # When installed as a package, conf/ lives in share/mda-agent/conf
+    # When installed as a package, conf/ lives in share/amd-agent/conf
     import importlib.util
     spec = importlib.util.find_spec("md_agent")
     if spec and spec.origin:
@@ -74,7 +74,7 @@ def _repo_conf_dir() -> str:
     # Try repo root first (editable install / development)
     for candidate in [
         Path(__file__).parents[1] / "conf",    # repo root/conf
-        pkg_dir.parents[1] / "share" / "mda-agent" / "conf",  # installed
+        pkg_dir.parents[1] / "share" / "amd-agent" / "conf",  # installed
     ]:
         if candidate.is_dir():
             return str(candidate)
@@ -321,7 +321,7 @@ def _interactive_setup(work_dir: str | None) -> None:
     use_wandb = _yesno("Enable WandB logging?", default=True)
     wandb_project: str | None = None
     if use_wandb:
-        wandb_project = _prompt("WandB project name", default="mda-agent")
+        wandb_project = _prompt("WandB project name", default="amd-agent")
 
     # ── Output directory ─────────────────────────────────────────────────────
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -376,14 +376,14 @@ def _interactive_setup(work_dir: str | None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="mda",
-        description="MD Agent — AI-powered molecular dynamics simulation setup and execution",
+        prog="amd",
+        description="Ahn MD — AI-powered molecular dynamics simulation setup and execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  mda                              # interactive wizard\n"
-            "  mda --example ala_dipeptide      # run built-in alanine dipeptide example\n"
-            "  mda --work-dir ./my_run          # set output directory\n"
+            "  amd                              # interactive wizard\n"
+            "  amd --example ala_dipeptide      # run built-in alanine dipeptide example\n"
+            "  amd --work-dir ./my_run          # set output directory\n"
         ),
     )
     parser.add_argument(
