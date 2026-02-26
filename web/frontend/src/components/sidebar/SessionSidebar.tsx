@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2 } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
-import { updateNickname } from "@/lib/api";
+import { updateNickname, restoreSession, deleteSession } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 interface Props {
   onNewSession: () => void;
   onSelectSession?: (id: string) => void;
+  onSessionDeleted?: (id: string) => void;
 }
 
 // ── Session list item ──────────────────────────────────────────────────
@@ -19,13 +20,17 @@ function SessionItem({
   isActive,
   onSelect,
   onSaved,
+  onDeleted,
 }: {
   s: { session_id: string; work_dir: string; nickname: string };
   isActive: boolean;
   onSelect: () => void;
   onSaved: (nick: string) => void;
+  onDeleted: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const nick = s.nickname || s.work_dir.split("/").pop() || s.session_id.slice(0, 8);
   const [draft, setDraft] = useState(nick);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,13 +57,65 @@ function SessionItem({
     setEditing(false);
   };
 
+  const startConfirm = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirming(true);
+  };
+
+  const confirmDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleting(true);
+    try {
+      await deleteSession(s.session_id);
+      onDeleted();
+    } catch { /* ignore */ } finally {
+      setDeleting(false);
+      setConfirming(false);
+    }
+  };
+
+  const cancelConfirm = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirming(false);
+  };
+
   return (
     <div
-      onClick={() => !editing && onSelect()}
+      onClick={async () => {
+        if (editing || confirming) return;
+        await restoreSession(s.session_id, s.work_dir, s.nickname);
+        onSelect();
+      }}
       className={`group relative w-full rounded-lg transition-colors cursor-pointer ${
         isActive ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
       }`}
     >
+      {/* Delete confirmation overlay */}
+      {confirming && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-lg bg-gray-900/95 border border-red-800/60 px-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-[11px] text-red-300 font-medium">Delete this session?</p>
+          <p className="text-[10px] text-gray-500 text-center leading-tight">Output files are kept.</p>
+          <div className="flex gap-2 mt-0.5">
+            <button
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-700 hover:bg-red-600 text-white text-[11px] font-medium disabled:opacity-50 transition-colors"
+            >
+              {deleting ? "Deleting…" : <><Check size={10} /> Delete</>}
+            </button>
+            <button
+              onClick={cancelConfirm}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 text-[11px] transition-colors"
+            >
+              <X size={10} /> Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="px-3 py-2.5">
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? "bg-blue-500" : "bg-transparent"}`} />
@@ -86,13 +143,15 @@ function SessionItem({
           ) : (
             <>
               <span className="text-xs font-medium truncate flex-1">{nick}</span>
-              <button
-                onClick={startEdit}
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-gray-300 transition-opacity flex-shrink-0"
-                title="Rename"
-              >
-                <Pencil size={10} />
-              </button>
+              {/* Action icons — visible on row hover */}
+              <div className="opacity-0 group-hover:opacity-100 flex flex-col gap-0.5 flex-shrink-0 transition-opacity">
+                <button onClick={startEdit} className="text-gray-600 hover:text-gray-300" title="Rename">
+                  <Pencil size={10} />
+                </button>
+                <button onClick={startConfirm} className="text-gray-600 hover:text-red-400" title="Delete">
+                  <Trash2 size={10} />
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -167,9 +226,9 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
 
 // ── Main sidebar ───────────────────────────────────────────────────────
 
-export default function SessionSidebar({ onNewSession, onSelectSession }: Props) {
+export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted }: Props) {
   const router = useRouter();
-  const { sessions, sessionId, fetchSessions, switchSession, updateSessionNickname } =
+  const { sessions, sessionId, fetchSessions, switchSession, updateSessionNickname, removeSession } =
     useSessionStore();
   const username = getUsername();
 
@@ -219,6 +278,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession }: Props)
                 isActive={s.session_id === sessionId}
                 onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
                 onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
+                onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
               />
             ))}
           </div>

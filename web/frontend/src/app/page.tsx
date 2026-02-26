@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
+import { restoreSession } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
@@ -26,14 +27,20 @@ export default function App() {
       router.replace("/login");
       return;
     }
-    // Restore session from localStorage
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      setSessionId(saved);
-      setSession(saved, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir: "" });
-    }
-    fetchSessions();
     setHydrated(true);
+
+    // Fetch session list from disk, then restore the last active session
+    const savedId = localStorage.getItem(STORAGE_KEY);
+    fetchSessions().then(() => {
+      if (!savedId) return;
+      const found = useSessionStore.getState().sessions.find((s) => s.session_id === savedId);
+      if (!found) { localStorage.removeItem(STORAGE_KEY); return; }
+      restoreSession(found.session_id, found.work_dir, found.nickname)
+        .finally(() => {
+          setSessionId(found.session_id);
+          setSession(found.session_id, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir: found.work_dir });
+        });
+    });
   }, [router, setSession, fetchSessions]);
 
   if (!hydrated) return null;
@@ -67,6 +74,12 @@ export default function App() {
           localStorage.setItem(STORAGE_KEY, id);
           setSessionId(id);
           setShowNewSession(false);
+        }}
+        onSessionDeleted={(id) => {
+          if (sessionId === id) {
+            localStorage.removeItem(STORAGE_KEY);
+            setSessionId(null);
+          }
         }}
       />
 

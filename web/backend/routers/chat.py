@@ -15,6 +15,8 @@ from web.backend.session_manager import (
     delete_session,
     get_session,
     list_sessions,
+    restore_session,
+    stop_session_simulation,
 )
 from web.backend.analysis_utils import get_log_progress
 
@@ -101,6 +103,17 @@ async def create_session_endpoint(req: CreateSessionRequest):
     except Exception:
         pass
 
+    # Write session.json for persistence across server restarts
+    from datetime import datetime
+    meta = {
+        "session_id": session.session_id,
+        "nickname": session.nickname,
+        "work_dir": session.work_dir,
+        "status": "active",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    (Path(req.work_dir) / "session.json").write_text(json.dumps(meta, indent=2))
+
     return {
         "session_id": session.session_id,
         "work_dir": session.work_dir,
@@ -111,7 +124,34 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
 @router.get("/sessions")
 async def list_sessions_endpoint(username: str = ""):
-    return {"sessions": list_sessions(username=username)}
+    """List sessions by scanning outputs/{username}/*/session.json on disk."""
+    outputs_root = Path("outputs")
+    if username:
+        scan_root = outputs_root / username
+        glob_pattern = "*/session.json"
+    else:
+        scan_root = outputs_root
+        glob_pattern = "*/*/session.json"
+
+    sessions = []
+    if scan_root.is_dir():
+        for sf in scan_root.glob(glob_pattern):
+            try:
+                data = json.loads(sf.read_text())
+                if "session_id" in data and "work_dir" in data:
+                    if data.get("status") == "deleted":
+                        continue
+                    sessions.append({
+                        "session_id": data["session_id"],
+                        "work_dir": data["work_dir"],
+                        "nickname": data.get("nickname", ""),
+                        "updated_at": data.get("updated_at", ""),
+                    })
+            except Exception:
+                continue
+
+    sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+    return {"sessions": sessions}
 
 
 class NicknameRequest(BaseModel):
@@ -137,12 +177,56 @@ async def update_nickname(session_id: str, req: NicknameRequest):
     return {"session_id": session_id, "nickname": session.nickname}
 
 
+class RestoreRequest(BaseModel):
+    work_dir: str
+    nickname: str = ""
+    username: str = ""
+
+
+@router.post("/sessions/{session_id}/restore")
+async def restore_session_endpoint(session_id: str, req: RestoreRequest):
+    """Ensure a session is live in memory, reconstructing from config.yaml if needed."""
+    session = restore_session(session_id, req.work_dir, req.nickname, req.username)
+    return {"session_id": session.session_id, "work_dir": session.work_dir, "nickname": session.nickname}
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
-    ok = delete_session(session_id)
-    if not ok:
-        raise HTTPException(404, "Session not found")
-    return {"deleted": session_id}
+    session = get_session(session_id)
+
+    # Stop any running simulation before removing the session
+    stopped = stop_session_simulation(session_id)
+
+    # Mark session.json as deleted (preserves output folder)
+    from datetime import datetime
+    work_dir = session.work_dir if session else None
+    if not work_dir:
+        # Try to find work_dir from session.json files on disk
+        import glob as _glob
+        for sf in Path("outputs").glob("*/*/session.json"):
+            try:
+                data = json.loads(sf.read_text())
+                if data.get("session_id") == session_id:
+                    work_dir = data.get("work_dir")
+                    break
+            except Exception:
+                pass
+
+    if work_dir:
+        meta_path = Path(work_dir) / "session.json"
+        try:
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            meta.update({
+                "session_id": session_id,
+                "status": "deleted",
+                "deleted_at": datetime.utcnow().isoformat(),
+            })
+            meta_path.write_text(json.dumps(meta, indent=2))
+        except Exception:
+            pass
+
+    delete_session(session_id)
+    return {"deleted": session_id, "simulation_stopped": stopped}
 
 
 # ── Streaming chat ─────────────────────────────────────────────────────

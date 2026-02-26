@@ -29,6 +29,7 @@ interface SessionState {
   switchSession: (id: string, workDir: string) => void;
   fetchSessions: () => Promise<void>;
   addSession: (s: SessionSummary) => void;
+  removeSession: (sessionId: string) => void;
   updateSessionNickname: (sessionId: string, nickname: string) => void;
   addUserMessage: (text: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
@@ -71,6 +72,12 @@ export const useSessionStore = create<SessionState>((set) => ({
   addSession: (s) =>
     set((state) => ({
       sessions: [s, ...state.sessions.filter((x) => x.session_id !== s.session_id)],
+    })),
+
+  removeSession: (sessionId) =>
+    set((state) => ({
+      sessions: state.sessions.filter((s) => s.session_id !== sessionId),
+      sessionId: state.sessionId === sessionId ? null : state.sessionId,
     })),
 
   updateSessionNickname: (sessionId, nickname) =>

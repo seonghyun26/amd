@@ -51,6 +51,23 @@ export async function listSessions(username: string): Promise<{
   return json(await fetch(`${BASE}/sessions?username=${encodeURIComponent(username)}`));
 }
 
+export async function restoreSession(
+  sessionId: string,
+  workDir: string,
+  nickname = "",
+  username = ""
+): Promise<void> {
+  await fetch(`${BASE}/sessions/${sessionId}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ work_dir: workDir, nickname, username }),
+  }).catch(() => {});
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await fetch(`${BASE}/sessions/${sessionId}`, { method: "DELETE" });
+}
+
 export async function updateNickname(
   sessionId: string,
   nickname: string

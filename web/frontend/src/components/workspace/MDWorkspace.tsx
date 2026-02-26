@@ -76,9 +76,9 @@ const PRESETS: Preset[] = [
 interface SystemOption { id: string; label: string; description: string }
 
 const SYSTEMS: SystemOption[] = [
-  { id: "ala_dipeptide", label: "Alanine Dipeptide",    description: "Alanine dipeptide · vacuum · CHARMM36m" },
-  { id: "chignolin",     label: "Chignolin (CLN025)",   description: "CLN025 mini-protein · implicit solvent" },
-  { id: "blank",         label: "Blank",                description: "No system — configure manually" },
+  { id: "ala_dipeptide", label: "Alanine Dipeptide",  description: "Blocked alanine dipeptide · Ace-Ala-Nme" },
+  { id: "chignolin",     label: "Chignolin (CLN025)", description: "10-residue β-hairpin mini-protein" },
+  { id: "blank",         label: "Blank",              description: "No system — configure manually" },
 ];
 
 // ── GROMACS templates ──────────────────────────────────────────────────

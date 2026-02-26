@@ -98,5 +98,47 @@ def list_sessions(username: str = "") -> list[dict]:
     ]
 
 
+def stop_session_simulation(session_id: str) -> bool:
+    """Terminate any running mdrun for this session. Returns True if a process was stopped."""
+    session = _sessions.get(session_id)
+    if not session:
+        return False
+    try:
+        runner = getattr(session.agent, "_gmx", None)
+        if runner is not None:
+            proc = getattr(runner, "_mdrun_proc", None)
+            if proc is not None and proc.poll() is None:
+                runner._cleanup()
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def restore_session(
+    session_id: str,
+    work_dir: str,
+    nickname: str = "",
+    username: str = "",
+) -> Session:
+    """Return existing in-memory session, or reconstruct it from config.yaml on disk."""
+    if session_id in _sessions:
+        return _sessions[session_id]
+
+    from md_agent.agent import MDAgent
+
+    cfg_path = Path(work_dir) / "config.yaml"
+    if cfg_path.exists():
+        from omegaconf import OmegaConf
+        cfg = OmegaConf.load(cfg_path)
+    else:
+        cfg = _load_hydra_cfg([], work_dir)
+
+    session = Session(session_id=session_id, work_dir=work_dir, nickname=nickname, username=username)
+    session.agent = MDAgent(cfg=cfg, work_dir=work_dir)
+    _sessions[session_id] = session
+    return session
+
+
 def delete_session(session_id: str) -> bool:
     return _sessions.pop(session_id, None) is not None
