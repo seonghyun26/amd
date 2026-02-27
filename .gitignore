@@ -36,6 +36,7 @@ wandb/
 *.top
 mdout.mdp
 #exclude/
+*charm27.ff*
 
 # PLUMED output files
 COLVAR
