@@ -28,7 +28,7 @@ async function json<T>(res: Response): Promise<T> {
 // ── Sessions ──────────────────────────────────────────────────────────
 
 export async function createSession(
-  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; gromacs?: string }
+  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string }
 ): Promise<{ session_id: string; work_dir: string; nickname: string; seeded_files: string[] }> {
   const res = await fetch(`${BASE}/sessions`, {
     method: "POST",
@@ -39,6 +39,7 @@ export async function createSession(
       username: params.username,
       preset: params.preset,
       system: params.system ?? "",
+      state: params.state ?? "",
       gromacs: params.gromacs ?? "",
     }),
   });
@@ -67,6 +68,18 @@ export async function restoreSession(
 export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetch(`${BASE}/sessions/${sessionId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+}
+
+export async function updateSessionMolecule(
+  sessionId: string,
+  selectedMolecule: string
+): Promise<{ session_id: string; selected_molecule: string }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/molecule`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selected_molecule: selectedMolecule }),
+  });
+  return json(res);
 }
 
 export async function updateNickname(
@@ -138,6 +151,18 @@ export function downloadUrl(sessionId: string, path: string): string {
   return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}`;
 }
 
+export function downloadZipUrl(sessionId: string): string {
+  return `${BASE}/sessions/${sessionId}/files/download-zip`;
+}
+
+export async function deleteFile(sessionId: string, path: string): Promise<{ deleted: string }> {
+  const res = await fetch(
+    `${BASE}/sessions/${sessionId}/files?path=${encodeURIComponent(path)}`,
+    { method: "DELETE" }
+  );
+  return json(res);
+}
+
 export async function getFileContent(sessionId: string, path: string): Promise<string> {
   const res = await fetch(downloadUrl(sessionId, path));
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
@@ -172,4 +197,25 @@ export async function getProgress(
   sessionId: string
 ): Promise<{ progress: { step: number; time_ps: number; ns_per_day: number } | null; available: boolean }> {
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/progress`));
+}
+
+// ── Molecule library ──────────────────────────────────────────────────
+
+export async function getMolecules(): Promise<{
+  systems: { id: string; label: string; states: { name: string; file: string }[] }[];
+}> {
+  return json(await fetch(`${BASE}/molecules`));
+}
+
+export async function loadMolecule(
+  sessionId: string,
+  system: string,
+  state: string
+): Promise<{ loaded: string; work_dir: string }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/molecules/load`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system, state }),
+  });
+  return json(res);
 }

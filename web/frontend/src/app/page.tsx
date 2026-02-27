@@ -3,14 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
-import { restoreSession } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
 import ChatWindow from "@/components/chat/ChatWindow";
 import ChatInput from "@/components/chat/ChatInput";
-
-const STORAGE_KEY = "amd-session";
 
 export default function App() {
   const router = useRouter();
@@ -19,34 +16,21 @@ export default function App() {
   const [autoSend, setAutoSend] = useState("");
   const [showNewSession, setShowNewSession] = useState(false);
 
-  const { setSession, addSession, fetchSessions } = useSessionStore();
+  const { addSession, fetchSessions } = useSessionStore();
 
-  // Auth check — redirect to /login if not authenticated
+  // Auth check — redirect to /login if not authenticated; load session list
   useEffect(() => {
     if (!isAuthenticated()) {
       router.replace("/login");
       return;
     }
     setHydrated(true);
-
-    // Fetch session list from disk, then restore the last active session
-    const savedId = localStorage.getItem(STORAGE_KEY);
-    fetchSessions().then(() => {
-      if (!savedId) return;
-      const found = useSessionStore.getState().sessions.find((s) => s.session_id === savedId);
-      if (!found) { localStorage.removeItem(STORAGE_KEY); return; }
-      restoreSession(found.session_id, found.work_dir, found.nickname)
-        .finally(() => {
-          setSessionId(found.session_id);
-          setSession(found.session_id, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir: found.work_dir });
-        });
-    });
-  }, [router, setSession, fetchSessions]);
+    fetchSessions();
+  }, [router, fetchSessions]);
 
   if (!hydrated) return null;
 
   const handleSessionCreated = (id: string, workDir: string, nickname: string) => {
-    localStorage.setItem(STORAGE_KEY, id);
     setSessionId(id);
     addSession({ session_id: id, work_dir: workDir, nickname });
     setShowNewSession(false);
@@ -71,15 +55,11 @@ export default function App() {
       <SessionSidebar
         onNewSession={handleNewSession}
         onSelectSession={(id) => {
-          localStorage.setItem(STORAGE_KEY, id);
           setSessionId(id);
           setShowNewSession(false);
         }}
         onSessionDeleted={(id) => {
-          if (sessionId === id) {
-            localStorage.removeItem(STORAGE_KEY);
-            setSessionId(null);
-          }
+          if (sessionId === id) setSessionId(null);
         }}
       />
 

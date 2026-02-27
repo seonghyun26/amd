@@ -14,6 +14,7 @@ export interface SessionSummary {
   session_id: string;
   work_dir: string;
   nickname: string;
+  selected_molecule?: string;
 }
 
 interface SessionState {
@@ -31,6 +32,7 @@ interface SessionState {
   addSession: (s: SessionSummary) => void;
   removeSession: (sessionId: string) => void;
   updateSessionNickname: (sessionId: string, nickname: string) => void;
+  setSessionMolecule: (sessionId: string, molecule: string) => void;
   addUserMessage: (text: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
@@ -84,6 +86,13 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.session_id === sessionId ? { ...s, nickname } : s
+      ),
+    })),
+
+  setSessionMolecule: (sessionId, molecule) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.session_id === sessionId ? { ...s, selected_molecule: molecule } : s
       ),
     })),
 

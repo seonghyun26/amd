@@ -14,6 +14,9 @@ from web.backend.session_manager import _repo_conf_dir, get_session
 
 router = APIRouter()
 
+_DATA_MOLECULES = Path(__file__).parents[4] / "data" / "molecule"
+_MOL_EXTS = {".pdb", ".gro", ".mol2", ".xyz", ".sdf"}
+
 
 @router.get("/config/options")
 async def get_config_options():
@@ -45,7 +48,8 @@ async def update_session_config(session_id: str, req: ConfigUpdateRequest):
         raise HTTPException(404, "Session not found")
 
     cfg = session.agent.cfg
-    OmegaConf.update(cfg, ".", req.updates, merge=True)
+    for key, value in req.updates.items():
+        OmegaConf.update(cfg, key, value, merge=True)
     return {"updated": True, "config": OmegaConf.to_container(cfg, resolve=True)}
 
 
@@ -103,3 +107,53 @@ async def generate_session_files(session_id: str):
     meta_path.write_text(json.dumps(meta, indent=2))
 
     return {"generated": generated, "work_dir": str(work_dir)}
+
+
+# ── Molecule library ───────────────────────────────────────────────────
+
+@router.get("/molecules")
+async def get_molecules():
+    """Scan data/molecule/ and return available systems with their conformational states."""
+    systems = []
+    if _DATA_MOLECULES.is_dir():
+        for system_dir in sorted(_DATA_MOLECULES.iterdir()):
+            if not system_dir.is_dir():
+                continue
+            states = []
+            for f in sorted(system_dir.iterdir()):
+                if f.is_file() and f.suffix.lower() in _MOL_EXTS:
+                    states.append({"name": f.stem, "file": f.name})
+            if states:
+                label = system_dir.name.replace("_", " ").title()
+                systems.append({"id": system_dir.name, "label": label, "states": states})
+    return {"systems": systems}
+
+
+class LoadMoleculeRequest(BaseModel):
+    system: str
+    state: str
+
+
+@router.post("/sessions/{session_id}/molecules/load")
+async def load_molecule(session_id: str, req: LoadMoleculeRequest):
+    """Copy a specific molecule state file from the data library into the session work_dir."""
+    import shutil
+
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    src_dir = _DATA_MOLECULES / req.system
+    if not src_dir.is_dir():
+        raise HTTPException(404, f"System {req.system!r} not found in molecule library")
+
+    src_file = next(
+        (f for f in src_dir.iterdir() if f.is_file() and f.suffix.lower() in _MOL_EXTS and f.stem == req.state),
+        None,
+    )
+    if src_file is None:
+        raise HTTPException(404, f"State {req.state!r} not found in system {req.system!r}")
+
+    dest = Path(session.work_dir) / src_file.name
+    shutil.copy2(src_file, dest)
+    return {"loaded": src_file.name, "work_dir": session.work_dir}

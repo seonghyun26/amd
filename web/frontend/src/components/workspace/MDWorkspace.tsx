@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Settings,
@@ -22,6 +22,8 @@ import {
   Layers,
   MessageSquare,
   Bot,
+  Download,
+  Trash2,
 } from "lucide-react";
 
 import AgentModal from "@/components/agents/AgentModal";
@@ -39,8 +41,11 @@ import {
   generateSessionFiles,
   listFiles,
   downloadUrl,
+  downloadZipUrl,
   getFileContent,
+  deleteFile,
   createSession,
+  updateSessionMolecule,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -76,6 +81,14 @@ const SYSTEMS: SystemOption[] = [
   { id: "chignolin",     label: "Chignolin (CLN025)", description: "10-residue β-hairpin mini-protein"        },
   { id: "blank",         label: "Blank",              description: "No system — configure manually"           },
 ];
+
+// Maps system config name → human label for the molecule pane header
+const SYSTEM_LABELS: Record<string, string> = {
+  ala_dipeptide: "Alanine Dipeptide",
+  protein:       "Protein",
+  membrane:      "Membrane",
+  chignolin:     "Chignolin",
+};
 
 // ── GROMACS templates ──────────────────────────────────────────────────
 
@@ -188,7 +201,7 @@ function SaveButton({ onSave, saved }: { onSave: () => void; saved: boolean }) {
 
 const TABS = [
   { value: "progress", label: "Progress", icon: <Activity size={12} /> },
-  { value: "system",   label: "System",   icon: <FlaskConical size={12} /> },
+  { value: "molecule", label: "Molecule", icon: <FlaskConical size={12} /> },
   { value: "gromacs",  label: "GROMACS",  icon: <Cpu size={12} /> },
   { value: "method",   label: "Method",   icon: <Zap size={12} /> },
 ];
@@ -220,10 +233,31 @@ function PillTabs({
   );
 }
 
+// ── Mol file helper ────────────────────────────────────────────────────
+
+const MOL_EXTS = new Set(["pdb", "gro", "mol2", "xyz", "sdf"]);
+function isMolFile(path: string) {
+  return MOL_EXTS.has(path.split(".").pop()?.toLowerCase() ?? "");
+}
+
 // ── Progress tab ───────────────────────────────────────────────────────
 
 function ProgressTab({ sessionId }: { sessionId: string }) {
   const [agentOpen, setAgentOpen] = useState(false);
+  const [simFiles, setSimFiles] = useState<string[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+
+  const refreshFiles = useCallback(() => {
+    setFilesLoading(true);
+    listFiles(sessionId)
+      .then(({ files }) => setSimFiles(files.filter((f) => !isMolFile(f))))
+      .catch(() => {})
+      .finally(() => setFilesLoading(false));
+  }, [sessionId]);
+
+  useEffect(() => {
+    refreshFiles();
+  }, [refreshFiles]);
 
   return (
     <div className="p-4 space-y-4">
@@ -252,128 +286,35 @@ function ProgressTab({ sessionId }: { sessionId: string }) {
         <RamachandranPlot sessionId={sessionId} />
       </div>
 
-      {agentOpen && (
-        <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
-      )}
-    </div>
-  );
-}
-
-// ── System tab ─────────────────────────────────────────────────────────
-
-const MOL_EXTS = new Set(["pdb", "gro", "mol2", "xyz", "sdf"]);
-function isMolFile(path: string) {
-  return MOL_EXTS.has(path.split(".").pop()?.toLowerCase() ?? "");
-}
-
-function SystemTab({ sessionId }: { sessionId: string }) {
-  const [files, setFiles] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [fileRefresh, setFileRefresh] = useState(0);
-  const [viewer, setViewer] = useState<{ content: string; name: string } | null>(null);
-  const [viewLoading, setViewLoading] = useState<string | null>(null);
-
-  const refreshFiles = useCallback(() => {
-    setLoading(true);
-    listFiles(sessionId)
-      .then(({ files }) => setFiles(files))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [sessionId]);
-
-  useEffect(() => {
-    refreshFiles();
-  }, [refreshFiles, fileRefresh]);
-
-  const handleVisualize = async (filePath: string) => {
-    const name = filePath.split("/").pop() ?? filePath;
-    setViewLoading(name);
-    try {
-      const res = await fetch(downloadUrl(sessionId, filePath));
-      const content = await res.text();
-      setViewer({ content, name });
-    } catch {
-      /* ignore */
-    } finally {
-      setViewLoading(null);
-    }
-  };
-
-  const molFiles = files.filter(isMolFile);
-  const otherFiles = files.filter((f) => !isMolFile(f));
-
-  const [agentOpen, setAgentOpen] = useState(false);
-
-  return (
-    <div className="p-4 space-y-4">
-      {/* Agent button */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-400">System Files</span>
-        <button
-          onClick={() => setAgentOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-blue-900/30 border border-blue-800/50 text-blue-400 hover:bg-blue-800/40 transition-colors font-medium"
-        >
-          <Bot size={11} />
-          Extract from Paper
-        </button>
-      </div>
-
-      {/* Molecule files */}
-      <Section icon={<FlaskConical size={13} />} title="Molecule Files" accent="indigo">
-        <div className="flex items-center justify-between -mt-1 mb-1">
-          <span className="text-xs text-gray-500">PDB, GRO, MOL2 — visualize before running</span>
-          <button
-            onClick={refreshFiles}
-            className="text-gray-600 hover:text-gray-400 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
-          </button>
-        </div>
-
-        {molFiles.length === 0 ? (
-          <p className="text-xs text-gray-600 py-1">
-            No molecule files yet — upload a PDB or GRO below.
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {molFiles.map((f) => {
-              const name = f.split("/").pop() ?? f;
-              const isLoading = viewLoading === name;
-              return (
-                <div
-                  key={f}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-800/50 border border-gray-700/50"
-                >
-                  <span className="text-base">🧬</span>
-                  <span className="text-xs text-gray-200 truncate flex-1 font-mono" title={f}>
-                    {name}
-                  </span>
-                  <button
-                    onClick={() => handleVisualize(f)}
-                    disabled={isLoading}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs bg-indigo-700/70 hover:bg-indigo-600 text-indigo-200 border border-indigo-700/50 transition-colors disabled:opacity-50 flex-shrink-0"
-                  >
-                    {isLoading ? <RefreshCw size={10} className="animate-spin" /> : <Eye size={10} />}
-                    Visualize
-                  </button>
-                </div>
-              );
-            })}
+      {/* Files section */}
+      <Section icon={<FileText size={13} />} title="Files" accent="emerald">
+        <div className="flex items-center justify-between -mt-1 mb-2">
+          <span className="text-xs text-gray-500">
+            {simFiles.length} file{simFiles.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshFiles}
+              className="text-gray-600 hover:text-gray-400 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={11} className={filesLoading ? "animate-spin" : ""} />
+            </button>
+            <a
+              href={downloadZipUrl(sessionId)}
+              download
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-emerald-700/70 hover:bg-emerald-600 text-emerald-200 border border-emerald-700/50 transition-colors"
+            >
+              <Download size={10} />
+              Download ZIP
+            </a>
           </div>
-        )}
-      </Section>
-
-      {/* Upload */}
-      <Section icon={<Upload size={13} />} title="Upload File" accent="blue">
-        <FileUpload sessionId={sessionId} onUploaded={() => setFileRefresh((n) => n + 1)} />
-      </Section>
-
-      {/* Other files */}
-      {otherFiles.length > 0 && (
-        <Section icon={<FileText size={13} />} title="Simulation Files" accent="emerald">
+        </div>
+        {simFiles.length === 0 ? (
+          <p className="text-xs text-gray-600 py-1">No simulation files yet.</p>
+        ) : (
           <div className="space-y-1 max-h-40 overflow-y-auto">
-            {otherFiles.map((f) => {
+            {simFiles.map((f) => {
               const name = f.split("/").pop() ?? f;
               return (
                 <a
@@ -387,16 +328,184 @@ function SystemTab({ sessionId }: { sessionId: string }) {
               );
             })}
           </div>
-        </Section>
-      )}
+        )}
+      </Section>
 
-      {viewer && (
+      {agentOpen && (
+        <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── Molecule tab ────────────────────────────────────────────────────────
+
+function MoleculeTab({
+  sessionId,
+  cfg,
+  selectedMolecule,
+  onSelectMolecule,
+  onMoleculeDeleted,
+}: {
+  sessionId: string;
+  cfg: Record<string, unknown>;
+  selectedMolecule: { content: string; name: string } | null;
+  onSelectMolecule: (m: { content: string; name: string }) => void;
+  onMoleculeDeleted: (name: string) => void;
+}) {
+  const system = (cfg.system ?? {}) as Record<string, unknown>;
+  const systemLabel = SYSTEM_LABELS[system.name as string] ?? (system.name as string) ?? "";
+  const [files, setFiles] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fileRefresh, setFileRefresh] = useState(0);
+  const [viewLoading, setViewLoading] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
+
+  const refreshFiles = useCallback(() => {
+    setLoading(true);
+    listFiles(sessionId)
+      .then(({ files }) => setFiles(files))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [sessionId]);
+
+  useEffect(() => {
+    refreshFiles();
+  }, [refreshFiles, fileRefresh]);
+
+  const handleDelete = async (filePath: string) => {
+    const name = filePath.split("/").pop() ?? filePath;
+    setDeleteLoading(name);
+    try {
+      await deleteFile(sessionId, filePath);
+      onMoleculeDeleted(name);
+      setFileRefresh((n) => n + 1);
+    } catch {
+      /* ignore */
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleSelect = async (filePath: string) => {
+    const name = filePath.split("/").pop() ?? filePath;
+    setViewLoading(name);
+    try {
+      const content = await getFileContent(sessionId, filePath);
+      onSelectMolecule({ content, name });
+    } catch {
+      /* ignore */
+    } finally {
+      setViewLoading(null);
+    }
+  };
+
+  const molFiles = files.filter(isMolFile);
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header: {molecule} - {filename} + agent button */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-gray-200 truncate">
+          {selectedMolecule ? (
+            <>
+              {systemLabel && (
+                <span className="text-gray-400 font-normal">{systemLabel} — </span>
+              )}
+              {selectedMolecule.name}
+            </>
+          ) : (
+            <span className="text-gray-500 font-normal text-xs">No molecule selected</span>
+          )}
+        </span>
+        <button
+          onClick={() => setAgentOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-blue-900/30 border border-blue-800/50 text-blue-400 hover:bg-blue-800/40 transition-colors font-medium"
+        >
+          <Bot size={11} />
+          Extract from Paper
+        </button>
+      </div>
+
+      {/* Inline 3D viewer */}
+      {selectedMolecule && (
         <MoleculeViewer
-          fileContent={viewer.content}
-          fileName={viewer.name}
-          onClose={() => setViewer(null)}
+          fileContent={selectedMolecule.content}
+          fileName={selectedMolecule.name}
+          inline={true}
         />
       )}
+
+      {/* Molecule files + integrated upload */}
+      <Section icon={<FlaskConical size={13} />} title="Molecule Files" accent="indigo">
+        <div className="flex items-center justify-between -mt-1 mb-1">
+          <span className="text-xs text-gray-500">PDB, GRO, MOL2 — select to visualize</span>
+          <button
+            onClick={refreshFiles}
+            className="text-gray-600 hover:text-gray-400 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+
+        {molFiles.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {molFiles.map((f) => {
+              const name = f.split("/").pop() ?? f;
+              const isLoading = viewLoading === name;
+              const isDeleting = deleteLoading === name;
+              const isSelected = selectedMolecule?.name === name;
+              return (
+                <div
+                  key={f}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${
+                    isSelected
+                      ? "bg-indigo-950/40 border-indigo-700/60"
+                      : "bg-gray-800/50 border-gray-700/50"
+                  }`}
+                >
+                  <span className="text-base">🧬</span>
+                  <span className="text-xs text-gray-200 truncate flex-1 font-mono" title={f}>
+                    {name}
+                  </span>
+                  <button
+                    onClick={() => handleSelect(f)}
+                    disabled={isLoading || isDeleting}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-colors disabled:opacity-50 flex-shrink-0 ${
+                      isSelected
+                        ? "bg-indigo-600/80 hover:bg-indigo-500 text-white border-indigo-500/50"
+                        : "bg-indigo-700/70 hover:bg-indigo-600 text-indigo-200 border-indigo-700/50"
+                    }`}
+                  >
+                    {isLoading
+                      ? <RefreshCw size={10} className="animate-spin" />
+                      : isSelected
+                      ? <CheckCircle2 size={10} />
+                      : null}
+                    {isSelected ? "Selected" : "Select"}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(f)}
+                    disabled={isDeleting || isLoading}
+                    className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-900/20 border border-gray-700/50 hover:border-red-800/40 transition-colors disabled:opacity-40 flex-shrink-0"
+                    title="Delete file"
+                  >
+                    {isDeleting
+                      ? <RefreshCw size={11} className="animate-spin" />
+                      : <Trash2 size={11} />}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Upload dropzone integrated here */}
+        <FileUpload sessionId={sessionId} onUploaded={() => setFileRefresh((n) => n + 1)} />
+      </Section>
+
       {agentOpen && (
         <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
       )}
@@ -819,12 +928,37 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("progress");
-  const [autoViewer, setAutoViewer] = useState<{ content: string; name: string } | null>(null);
-  const { setSession } = useSessionStore();
+  const [selectedMolecule, setSelectedMolecule] = useState<{ content: string; name: string } | null>(null);
+  const { setSession, sessions, setSessionMolecule } = useSessionStore();
+  // Stable ref — lets the restore effect read latest sessions without re-running
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
 
   useEffect(() => {
     if (!sessionId) return;
-    getSessionConfig(sessionId).then((r) => setCfg(r.config)).catch(() => {});
+    setSelectedMolecule(null);
+
+    getSessionConfig(sessionId)
+      .then((r) => {
+        setCfg(r.config);
+
+        // Derive work_dir and molecule file from the config (authoritative)
+        const run = (r.config.run ?? {}) as Record<string, unknown>;
+        const sys = (r.config.system ?? {}) as Record<string, unknown>;
+        const workDir = (run.work_dir as string) ?? "";
+        // Prefer session.json's selected_molecule; fall back to system.coordinates
+        const session = sessionsRef.current.find((s) => s.session_id === sessionId);
+        const molFile = session?.selected_molecule || (sys.coordinates as string) || "";
+
+        if (molFile && workDir) {
+          getFileContent(sessionId, `${workDir}/${molFile}`)
+            .then((content) =>
+              setSelectedMolecule({ content, name: molFile.split("/").pop() ?? molFile })
+            )
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, [sessionId]);
 
   const handleChange = (dotKey: string, value: unknown) => {
@@ -848,6 +982,23 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const handleSelectMolecule = async (m: { content: string; name: string }) => {
+    setSelectedMolecule(m);
+    if (!sessionId) return;
+    // Update store immediately so switching sessions restores correctly
+    setSessionMolecule(sessionId, m.name);
+    // Persist to session.json
+    await updateSessionMolecule(sessionId, m.name).catch(() => {});
+    // Update system.coordinates in the Hydra config + regenerate YAML
+    const updatedCfg = {
+      ...cfg,
+      system: { ...((cfg.system as Record<string, unknown>) ?? {}), coordinates: m.name },
+    };
+    setCfg(updatedCfg);
+    await updateSessionConfig(sessionId, updatedCfg).catch(() => {});
+    await generateSessionFiles(sessionId).catch(() => {});
+  };
+
   const handleSessionCreated = async (
     id: string,
     workDir: string,
@@ -857,14 +1008,16 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSession(id, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir });
     onSessionCreated(id, workDir, nickname);
 
-    // Auto-open the first seeded structure file in the viewer
+    // Auto-select the first seeded structure file and persist to session.json
     const structExts = new Set(["pdb", "gro", "mol2", "xyz"]);
     const structFile = seededFiles.find((f) => structExts.has(f.split(".").pop()?.toLowerCase() ?? ""));
     if (structFile) {
-      setActiveTab("system");
+      setActiveTab("molecule");
       try {
         const content = await getFileContent(id, `${workDir}/${structFile}`);
-        setAutoViewer({ content, name: structFile });
+        setSelectedMolecule({ content, name: structFile });
+        setSessionMolecule(id, structFile);
+        await updateSessionMolecule(id, structFile).catch(() => {});
       } catch { /* ignore */ }
     }
   };
@@ -901,7 +1054,17 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
   const tabContent: Record<string, React.ReactNode> = {
     progress: <ProgressTab sessionId={sessionId} />,
-    system:   <SystemTab sessionId={sessionId} />,
+    molecule: (
+      <MoleculeTab
+        sessionId={sessionId}
+        cfg={cfg}
+        selectedMolecule={selectedMolecule}
+        onSelectMolecule={handleSelectMolecule}
+        onMoleculeDeleted={(name) => {
+          if (selectedMolecule?.name === name) setSelectedMolecule(null);
+        }}
+      />
+    ),
     gromacs:  <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
     method:   <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
   };
@@ -924,15 +1087,6 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           Start MD Simulation
         </button>
       </div>
-
-      {autoViewer && (
-        <MoleculeViewer
-          fileContent={autoViewer.content}
-          fileName={autoViewer.name}
-          onClose={() => setAutoViewer(null)}
-        />
-      )}
     </div>
   );
 }
-

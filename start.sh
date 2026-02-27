@@ -100,23 +100,10 @@ else
   echo "Frontend already built (use --build to rebuild)"
 fi
 
-MUX_PORT="${AMD_MUX_PORT:-10001}"
-SSH_PORT="${AMD_SSH_PORT:-22}"
-
 echo ""
 echo "Starting AMD server → http://localhost:8000"
-echo "TCP multiplexer    → 0.0.0.0:${MUX_PORT}  (SSH:${SSH_PORT} + HTTP:8000)"
 echo "Press Ctrl+C to stop."
 echo ""
 
-cleanup() {
-  kill "$MUX_PID" 2>/dev/null
-  wait "$MUX_PID" 2>/dev/null
-}
-trap cleanup INT TERM
-
 cd "$REPO_ROOT"
-python tcp_mux.py --port "$MUX_PORT" --ssh "$SSH_PORT" --http 8000 &
-MUX_PID=$!
-
-exec python -m uvicorn web.backend.main:app --host 127.0.0.1 --port 8000
+exec python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000

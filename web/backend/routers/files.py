@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from md_agent.utils.file_utils import list_files
 from web.backend.session_manager import get_session
@@ -50,3 +52,45 @@ async def download_file(session_id: str, path: str):
         raise HTTPException(404, "File not found")
 
     return FileResponse(str(target), filename=target.name)
+
+
+@router.delete("/sessions/{session_id}/files")
+async def delete_file(session_id: str, path: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    work = Path(session.work_dir).resolve()
+    target = Path(path).resolve()
+    if not str(target).startswith(str(work)):
+        raise HTTPException(403, "Path outside session work directory")
+    if not target.exists():
+        raise HTTPException(404, "File not found")
+
+    target.unlink()
+    return {"deleted": str(target)}
+
+
+@router.get("/sessions/{session_id}/files/download-zip")
+async def download_zip(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    work = Path(session.work_dir).resolve()
+    if not work.exists():
+        raise HTTPException(404, "Work directory not found")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(work.rglob("*")):
+            if f.is_file():
+                zf.write(f, f.relative_to(work))
+    buf.seek(0)
+
+    filename = f"session_{session_id[:8]}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

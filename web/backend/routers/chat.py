@@ -24,7 +24,7 @@ router = APIRouter()
 
 # ── Preset definitions ─────────────────────────────────────────────────
 
-_REPO_ROOT = Path(__file__).parents[2]
+_REPO_ROOT = Path(__file__).parents[3]
 
 # Maps preset id → Hydra config group selections
 PRESET_CONFIGS: dict[str, dict[str, str]] = {
@@ -34,20 +34,31 @@ PRESET_CONFIGS: dict[str, dict[str, str]] = {
     "umbrella":  dict(method="umbrella",     system="protein", gromacs="default", plumed_cvs="default"),
 }
 
-# Maps molecule system id → list of example files to copy into work_dir on creation
-_ALA = _REPO_ROOT / "examples" / "alanine_dipeptide"
-SYSTEM_SEED_FILES: dict[str, list[Path]] = {
-    "ala_dipeptide": [_ALA / "ala2.pdb"],
+# Maps molecule system id → subdirectory name under data/molecule/
+_DATA_MOLECULES = _REPO_ROOT / "data" / "molecule"
+_SYSTEM_DIR: dict[str, str] = {
+    "ala_dipeptide": "alanine_dipeptide",
+    "chignolin":     "chignolin",
 }
+_MOL_EXTS = {".pdb", ".gro", ".mol2", ".xyz", ".sdf"}
 
 
-def _seed_files(work_dir: str, preset: str, system: str) -> list[str]:
-    """Copy preset/system example files into work_dir. Returns relative file paths."""
+def _seed_files(work_dir: str, preset: str, system: str, state: str = "") -> list[str]:
+    """Copy molecule files from data/molecule/{system}/ into work_dir.
+    When state is provided, only the matching state file is copied.
+    Returns a list of copied file names (relative to work_dir)."""
     import shutil
     seeded: list[str] = []
-    sources: list[Path] = list(SYSTEM_SEED_FILES.get(system, []))
-    for src in sources:
-        if src.is_file():
+    dir_name = _SYSTEM_DIR.get(system)
+    if not dir_name:
+        return seeded
+    src_dir = _DATA_MOLECULES / dir_name
+    if not src_dir.is_dir():
+        return seeded
+    for src in sorted(src_dir.iterdir()):
+        if src.is_file() and src.suffix.lower() in _MOL_EXTS:
+            if state and src.stem != state:
+                continue
             dest = Path(work_dir) / src.name
             shutil.copy2(src, dest)
             seeded.append(src.name)
@@ -64,6 +75,7 @@ class CreateSessionRequest(BaseModel):
     # Individual overrides (ignored when preset is set)
     method: str = ""
     system: str = ""
+    state: str = ""   # molecule conformational state (e.g. "c5", "c7ax")
     gromacs: str = ""
     plumed_cvs: str = ""
     extra_overrides: list[str] = []
@@ -76,23 +88,31 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
     # Resolve config from preset; individual fields override if provided
     cfg_defaults = PRESET_CONFIGS.get(req.preset, PRESET_CONFIGS["undefined"])
-    method    = req.method    or cfg_defaults["method"]
-    system    = req.system    or cfg_defaults["system"]
-    gromacs   = req.gromacs   or cfg_defaults["gromacs"]
+    method     = req.method     or cfg_defaults["method"]
+    gromacs    = req.gromacs    or cfg_defaults["gromacs"]
     plumed_cvs = req.plumed_cvs or cfg_defaults["plumed_cvs"]
+    # molecule_system is the UI selector (used for file seeding only)
+    # hydra_system must be a valid conf/system/*.yaml name
+    molecule_system = req.system  # e.g. "ala_dipeptide", "chignolin", "blank"
+    _HYDRA_SYSTEM_MAP: dict[str, str] = {
+        "ala_dipeptide": "ala_dipeptide",
+        "chignolin":     "protein",
+        "blank":         "protein",
+    }
+    hydra_system = _HYDRA_SYSTEM_MAP.get(molecule_system) or cfg_defaults["system"]
 
     session = create_session(
         work_dir=req.work_dir,
         nickname=req.nickname,
         username=req.username,
         method=method,
-        system=system,
+        system=hydra_system,
         gromacs=gromacs,
         plumed_cvs=plumed_cvs,
         extra_overrides=req.extra_overrides,
     )
 
-    seeded = _seed_files(req.work_dir, req.preset, system)
+    seeded = _seed_files(req.work_dir, req.preset, molecule_system, req.state)
 
     # Write initial config.yaml to work_dir so the user can inspect/edit it
     try:
@@ -145,6 +165,7 @@ async def list_sessions_endpoint(username: str = ""):
                         "session_id": data["session_id"],
                         "work_dir": data["work_dir"],
                         "nickname": data.get("nickname", ""),
+                        "selected_molecule": data.get("selected_molecule", ""),
                         "updated_at": data.get("updated_at", ""),
                     })
             except Exception:
@@ -156,6 +177,29 @@ async def list_sessions_endpoint(username: str = ""):
 
 class NicknameRequest(BaseModel):
     nickname: str
+
+
+class MoleculeSelectRequest(BaseModel):
+    selected_molecule: str
+
+
+@router.patch("/sessions/{session_id}/molecule")
+async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
+    """Persist the selected molecule filename in session.json."""
+    from datetime import datetime
+    for sf in Path("outputs").glob("*/*/session.json"):
+        try:
+            data = json.loads(sf.read_text())
+            if data.get("session_id") == session_id:
+                data.update({
+                    "selected_molecule": req.selected_molecule,
+                    "updated_at": datetime.utcnow().isoformat(),
+                })
+                sf.write_text(json.dumps(data, indent=2))
+                break
+        except Exception:
+            pass
+    return {"session_id": session_id, "selected_molecule": req.selected_molecule}
 
 
 @router.patch("/sessions/{session_id}/nickname")

@@ -1,0 +1,10 @@
+name: chignolin
+forcefield: charmm36m
+water_model: tip3p
+box_type: dodecahedron
+box_distance: 1.2        # nm
+
+# Paths are resolved against work_dir
+topology: topol.top
+coordinates: chignolin.gro
+index: null
