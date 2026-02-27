@@ -8,6 +8,9 @@ import {
   Zap,
   FlaskConical,
   Play,
+  Pause,
+  Square,
+  Loader2,
   Plus,
   RefreshCw,
   Eye,
@@ -46,6 +49,8 @@ import {
   deleteFile,
   createSession,
   updateSessionMolecule,
+  startSimulation,
+  stopSimulation,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -94,10 +99,8 @@ const SYSTEM_LABELS: Record<string, string> = {
 interface GmxTemplate { id: string; label: string; description: string }
 
 const GMX_TEMPLATES: GmxTemplate[] = [
-  { id: "ala_vacuum", label: "Vacuum", description: "Dodecahedron vacuum box · no solvent · fast"        },
-  { id: "nvt",        label: "NVT",    description: "Canonical ensemble · constant volume · 100 ps"      },
-  { id: "npt",        label: "NPT",    description: "Isobaric ensemble · Parrinello–Rahman barostat"     },
-  { id: "blank",      label: "Blank",  description: "No template — configure manually"                   },
+  { id: "ala_vacuum", label: "Vacuum", description: "Dodecahedron vacuum box · no solvent · fast" },
+  { id: "blank",      label: "Blank",  description: "No template — configure manually"            },
 ];
 
 // ── UI primitives ─────────────────────────────────────────────────────
@@ -181,6 +184,37 @@ function Field({
 /** Two-column grid for related fields */
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-2 gap-3">{children}</div>;
+}
+
+/** Labelled select dropdown */
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-400 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {hint && <p className="mt-1 text-[11px] text-gray-600">{hint}</p>}
+    </div>
+  );
 }
 
 function SaveButton({ onSave, saved }: { onSave: () => void; saved: boolean }) {
@@ -534,6 +568,7 @@ function GromacsTab({
 }) {
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
+  const system  = (cfg.system  ?? {}) as Record<string, unknown>;
 
   return (
     <div className="p-4 space-y-4">
@@ -541,6 +576,31 @@ function GromacsTab({
         <h3 className="text-sm font-semibold text-gray-200">GROMACS Parameters</h3>
         <SaveButton onSave={onSave} saved={saved} />
       </div>
+
+      {/* System */}
+      <Section icon={<FlaskConical size={13} />} title="System" accent="emerald">
+        <FieldGrid>
+          <SelectField
+            label="Force Field"
+            value={String(system.forcefield ?? "amber99sb-ildn")}
+            onChange={(v) => onChange("system.forcefield", v)}
+            options={[
+              { value: "amber99sb-ildn", label: "AMBER99SB-ILDN" },
+              { value: "charmm27",       label: "CHARMM27"       },
+              { value: "charmm36m",      label: "CHARMM36m"      },
+            ]}
+          />
+          <SelectField
+            label="Solvent"
+            value={String(system.water_model ?? "tip3p")}
+            onChange={(v) => onChange("system.water_model", v)}
+            options={[
+              { value: "none",  label: "Vacuum"      },
+              { value: "tip3p", label: "TIP3P Water" },
+            ]}
+          />
+        </FieldGrid>
+      </Section>
 
       {/* Simulation length */}
       {(() => {
@@ -586,14 +646,24 @@ function GromacsTab({
 
       {/* Thermostat */}
       <Section icon={<Thermometer size={13} />} title="Temperature" accent="amber">
-        <Field
-          label="Reference Temperature"
-          type="number"
-          value={String(gromacs.ref_t ?? gromacs.temperature ?? "300")}
-          onChange={(v) => onChange("gromacs.ref_t", Number(v))}
-          unit="K"
-          hint="Target temperature for V-rescale thermostat."
-        />
+        <FieldGrid>
+          <Field
+            label="Reference Temperature"
+            type="number"
+            value={String(Array.isArray(gromacs.ref_t) ? (gromacs.ref_t as number[])[0] : gromacs.ref_t ?? gromacs.temperature ?? "300")}
+            onChange={(v) => onChange("gromacs.ref_t", [Number(v)])}
+            unit="K"
+            hint="Target temperature (V-rescale)."
+          />
+          <Field
+            label="Thermostat time constant"
+            type="number"
+            value={String(Array.isArray(gromacs.tau_t) ? (gromacs.tau_t as number[])[0] : gromacs.tau_t ?? "0.1")}
+            onChange={(v) => onChange("gromacs.tau_t", [Number(v)])}
+            unit="ps"
+            hint="τ for V-rescale coupling."
+          />
+        </FieldGrid>
       </Section>
 
       {/* Non-bonded cutoffs */}
@@ -946,19 +1016,28 @@ interface Props {
   sessionId: string | null;
   showNewForm: boolean;
   onSessionCreated: (id: string, workDir: string, nickname: string) => void;
-  onStartMD: () => void;
   onNewSession: () => void;
 }
 
-export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onStartMD, onNewSession }: Props) {
+type SimState = "idle" | "setting_up" | "running";
+
+export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onNewSession }: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("progress");
   const [selectedMolecule, setSelectedMolecule] = useState<{ content: string; name: string } | null>(null);
-  const { setSession, sessions, setSessionMolecule } = useSessionStore();
+  const [simState, setSimState] = useState<SimState>("idle");
+  const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
+  const { setSession, sessions, setSessionMolecule, appendSSEEvent } = useSessionStore();
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+
+  // Reset simulation state when switching sessions
+  useEffect(() => {
+    setSimState("idle");
+    setPauseConfirmOpen(false);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -1006,6 +1085,29 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     await generateSessionFiles(sessionId).catch(() => {});
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleStartMD = async () => {
+    if (!sessionId || simState !== "idle") return;
+    setSimState("setting_up");
+    try {
+      const result = await startSimulation(sessionId);
+      appendSSEEvent({ type: "text_delta", text: `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}` });
+      appendSSEEvent({ type: "agent_done", final_text: "" });
+      setSimState("running");
+    } catch (err) {
+      appendSSEEvent({ type: "error", message: `Failed to start simulation: ${err}` });
+      setSimState("idle");
+    }
+  };
+
+  const handleConfirmPause = async () => {
+    setPauseConfirmOpen(false);
+    if (!sessionId) return;
+    try {
+      await stopSimulation(sessionId);
+    } catch { /* ignore */ }
+    setSimState("idle");
   };
 
   const handleSelectMolecule = async (m: { content: string; name: string }) => {
@@ -1103,16 +1205,62 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {tabContent[activeTab]}
       </div>
 
-      {/* Start MD button */}
+      {/* Simulation action button */}
       <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-gray-900/50">
-        <button
-          onClick={onStartMD}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
-        >
-          <Play size={16} fill="currentColor" />
-          Start MD Simulation
-        </button>
+        {simState === "idle" && (
+          <button
+            onClick={handleStartMD}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+          >
+            <Play size={16} fill="currentColor" />
+            Start MD Simulation
+          </button>
+        )}
+        {simState === "setting_up" && (
+          <button
+            disabled
+            className="w-full flex items-center justify-center gap-2 py-3 bg-gray-700 text-gray-300 font-semibold rounded-xl text-sm cursor-not-allowed"
+          >
+            <Loader2 size={16} className="animate-spin" />
+            Setting up…
+          </button>
+        )}
+        {simState === "running" && (
+          <button
+            onClick={() => setPauseConfirmOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-900/30 text-sm"
+          >
+            <Square size={14} fill="currentColor" />
+            Pause MD Simulation
+          </button>
+        )}
       </div>
+
+      {/* Pause confirmation dialog */}
+      {pauseConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-gray-100 mb-2">Stop Simulation?</h3>
+            <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+              This will terminate the running mdrun process. Output files written so far will be preserved.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setPauseConfirmOpen(false)}
+                className="px-4 py-2 text-xs text-gray-400 hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPause}
+                className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-medium"
+              >
+                Stop Simulation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

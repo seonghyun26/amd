@@ -207,6 +207,26 @@ export async function getMolecules(): Promise<{
   return json(await fetch(`${BASE}/molecules`));
 }
 
+// ── Simulation ────────────────────────────────────────────────────────
+
+export async function startSimulation(
+  sessionId: string
+): Promise<{ status: string; pid: number; expected_files: Record<string, string> }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/simulate`, { method: "POST" });
+  return json(res);
+}
+
+export async function getSimulationStatus(
+  sessionId: string
+): Promise<{ running: boolean; pid?: number }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/simulate/status`));
+}
+
+export async function stopSimulation(sessionId: string): Promise<{ stopped: boolean }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/stop`, { method: "POST" });
+  return json(res);
+}
+
 // ── API keys ──────────────────────────────────────────────────────────
 
 export async function getApiKeys(username: string): Promise<{ keys: Record<string, string> }> {

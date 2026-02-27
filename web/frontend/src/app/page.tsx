@@ -42,11 +42,6 @@ export default function App() {
     setSessionId(null);
   };
 
-  const handleStartMD = () => {
-    if (!sessionId) return;
-    setAutoSend("Please start the MD simulation with the current configuration.");
-  };
-
   const activeSessionId = showNewSession ? null : sessionId;
 
   return (
@@ -68,7 +63,6 @@ export default function App() {
         sessionId={activeSessionId}
         showNewForm={showNewSession}
         onSessionCreated={handleSessionCreated}
-        onStartMD={handleStartMD}
         onNewSession={handleNewSession}
       />
 

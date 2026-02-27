@@ -1,5 +1,5 @@
 name: ala_dipeptide
-forcefield: charmm36m      # matches prepare.sh / ala2.pdb in examples/alanine_dipeptide/
+forcefield: amber99sb-ildn  # amber99sb-ildn defines ACE+NME caps; charmm27 uses CT3 (incompatible with this PDB)
 water_model: none          # vacuum simulation (no solvent)
 box_type: dodecahedron
 box_distance: 1.5          # nm — matches editconf -d 1.5 in prepare.sh

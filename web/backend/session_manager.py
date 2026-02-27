@@ -115,6 +115,22 @@ def stop_session_simulation(session_id: str) -> bool:
     return False
 
 
+def get_simulation_status(session_id: str) -> dict:
+    """Return whether mdrun is currently running for this session."""
+    session = _sessions.get(session_id)
+    if not session:
+        return {"running": False}
+    try:
+        runner = getattr(session.agent, "_gmx", None)
+        if runner is not None:
+            proc = getattr(runner, "_mdrun_proc", None)
+            if proc is not None and proc.poll() is None:
+                return {"running": True, "pid": proc.pid}
+    except Exception:
+        pass
+    return {"running": False}
+
+
 def restore_session(
     session_id: str,
     work_dir: str,

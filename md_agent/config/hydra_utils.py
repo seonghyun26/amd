@@ -74,10 +74,11 @@ def generate_mdp_from_config(
             val = " ".join(str(v) for v in val)
         lines.append(f"{mdp_key:<30} = {val}")
 
-    # PLUMED methods must not write forces to trajectory
+    # PLUMED methods must not write forces to trajectory.
+    # plain / plain_md already have nstfout in MDP_KEY_MAP — skip to avoid duplicate.
     if (
         hasattr(cfg, "method")
-        and OmegaConf.select(cfg, "method._target_name") not in (None, "plain")
+        and OmegaConf.select(cfg, "method._target_name") not in (None, "plain", "plain_md")
     ):
         lines.append(f"{'nstfout':<30} = 0  ; PLUMED manages bias forces")
 

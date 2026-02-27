@@ -1,5 +1,5 @@
 name: protein
-forcefield: charmm36m   # or amber99sb-ildn, amber14sb, etc.
+forcefield: charmm27    # built-in; charmm36m requires external .ff files from MacKerell lab
 water_model: tip3p       # tip3p, tip4p, spc, spce
 box_type: dodecahedron
 box_distance: 1.2        # nm — minimum distance from solute to box edge
