@@ -3,6 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertCircle, Crosshair, Camera } from "lucide-react";
 
+function parseStructureInfo(
+  content: string,
+  fileName: string,
+): { atoms: number; residues: number } | null {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  if (ext === "gro") {
+    const lines = content.split("\n");
+    const atoms = parseInt(lines[1]?.trim() ?? "", 10);
+    if (isNaN(atoms)) return null;
+    const seen = new Set<string>();
+    for (let i = 2; i < 2 + atoms && i < lines.length; i++) {
+      const l = lines[i];
+      if (l.length < 10) continue;
+      seen.add(l.substring(0, 5).trim() + ":" + l.substring(5, 10).trim());
+    }
+    return { atoms, residues: seen.size };
+  }
+  if (ext === "pdb") {
+    let atoms = 0;
+    const seen = new Set<string>();
+    for (const l of content.split("\n")) {
+      if (l.startsWith("ATOM  ") || l.startsWith("HETATM")) {
+        atoms++;
+        seen.add(l.substring(21, 22) + l.substring(22, 26).trim());
+      }
+    }
+    return atoms > 0 ? { atoms, residues: seen.size } : null;
+  }
+  return null;
+}
+
 interface Props {
   fileContent: string;
   fileName: string;
@@ -54,16 +85,19 @@ function applyRepresentations(component: any, reps: RepState) {
 }
 
 export default function MoleculeViewer({ fileContent, fileName, onClose, inline = false }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const stageRef     = useRef<any>(null);
+  const stageRef        = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const componentRef = useRef<any>(null);
-  const repsRef      = useRef<RepState>({ ball: true, stick: true, ribbon: false, surface: false });
+  const componentRef    = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const initialOrientRef = useRef<any>(null);
+  const repsRef         = useRef<RepState>({ ball: true, stick: true, ribbon: false, surface: false });
 
-  const [ready, setReady]   = useState(false);
-  const [error, setError]   = useState<string | null>(null);
-  const [reps, setReps]     = useState<RepState>({ ball: true, stick: true, ribbon: false, surface: false });
+  const [ready, setReady]           = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [reps, setReps]             = useState<RepState>({ ball: true, stick: true, ribbon: false, surface: false });
+  const [structInfo, setStructInfo] = useState<{ atoms: number; residues: number } | null>(null);
 
   // Keep repsRef in sync for use inside async callbacks
   useEffect(() => { repsRef.current = reps; }, [reps]);
@@ -78,6 +112,8 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   useEffect(() => {
     setReady(false);
     setError(null);
+    setStructInfo(null);
+    initialOrientRef.current = null;
     const ext = fileName.split(".").pop()?.toLowerCase() ?? "pdb";
     let ro: ResizeObserver | null = null;
 
@@ -94,8 +130,27 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
       const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "#111827" });
       stageRef.current = stage;
 
+      // Make distance / angle measurement labels bigger and legible on dark bg
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      stage.signals.componentAdded.add((comp: any) => {
+        comp.eachRepresentation?.((repr: any) => {
+          if (repr.type === "distance" || repr.type === "angle" || repr.type === "label") {
+            repr.setParameters({
+              labelSize: 3.0,
+              labelColor: "#ffffff",
+              labelBackground: true,
+              labelBackgroundColor: "#000000",
+              labelBackgroundOpacity: 0.55,
+            });
+          }
+        });
+      });
+
       ro = new ResizeObserver(() => stage.handleResize());
       ro.observe(containerRef.current);
+
+      // Parse atom / residue count directly from the file text
+      setStructInfo(parseStructureInfo(fileContent, fileName));
 
       const blob = new Blob([fileContent], { type: "text/plain" });
       stage
@@ -105,6 +160,11 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
           componentRef.current = component;
           applyRepresentations(component, repsRef.current);
           component.autoView(400);   // center + fit on load
+          // Capture the post-autoView orientation so Reset can restore it exactly
+          setTimeout(() => {
+            initialOrientRef.current =
+              stageRef.current?.viewerControls?.orient?.clone?.() ?? null;
+          }, 500);
           setReady(true);
         })
         .catch((err: unknown) => {
@@ -139,7 +199,12 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   }, [fileContent, fileName]);
 
   const handleResetView = () => {
-    componentRef.current?.autoView(400);
+    if (!stageRef.current) return;
+    if (initialOrientRef.current) {
+      stageRef.current.animationControls.orient(initialOrientRef.current, 400);
+    } else {
+      componentRef.current?.autoView(400);
+    }
   };
 
   const handleScreenshot = () => {
@@ -222,6 +287,16 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
             </div>
           ) : null}
           <div ref={containerRef} className="w-full h-full" />
+          {structInfo && (
+            <div className="absolute top-2 left-2 flex gap-1.5 pointer-events-none">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+                {structInfo.atoms.toLocaleString()} atoms
+              </span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+                {structInfo.residues} residues
+              </span>
+            </div>
+          )}
           {ready && (
             <div className="absolute bottom-0 left-0 right-0 px-3 py-1 bg-gray-900/80 text-[10px] text-gray-500">
               drag to rotate · scroll to zoom · right-click to translate

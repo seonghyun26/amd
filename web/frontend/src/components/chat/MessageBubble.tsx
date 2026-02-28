@@ -53,7 +53,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
           }
           if (block.kind === "error") {
             return (
-              <div key={i} className="rounded-xl px-4 py-2.5 text-sm bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              <div key={i} className="rounded-xl px-4 py-2.5 text-sm bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
                 ⚠️ {block.content}
               </div>
             );

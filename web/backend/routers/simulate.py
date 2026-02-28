@@ -112,6 +112,53 @@ async def start_simulation(session_id: str):
         top_file   = "topol.top"
         coord_file = "system.gro"
 
+        # 3b. Solvate + neutralise when using explicit water
+        if water_model != "none":
+            # Add simulation box (dodecahedron, 1 nm clearance)
+            r = gmx.run_gmx_command(
+                "editconf",
+                ["-f", "system.gro", "-o", "box.gro",
+                 "-c", "-d", "1.0", "-bt", "dodecahedron"],
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"editconf failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # Fill with water
+            r = gmx.run_gmx_command(
+                "solvate",
+                ["-cp", "box.gro", "-cs", "spc216.gro",
+                 "-o", "solvated.gro", "-p", "topol.top"],
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"solvate failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # grompp → ions.tpr (allow net-charge warning; genion will fix it)
+            r = gmx.grompp(
+                mdp_file="md.mdp",
+                topology_file="topol.top",
+                coordinate_file="solvated.gro",
+                output_tpr="ions.tpr",
+                max_warnings=20,
+            )
+            if not r["success"]:
+                raise HTTPException(500, f"grompp (ions) failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # Replace water molecules with Na+/Cl- to reach zero net charge
+            r = gmx.run_gmx_command(
+                "genion",
+                ["-s", "ions.tpr", "-o", "ionized.gro", "-p", "topol.top",
+                 "-pname", "NA", "-nname", "CL", "-neutral"],
+                stdin_text="SOL\n",
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"genion failed:\n{r.get('stderr', '')[-2000:]}")
+
+            coord_file = "ionized.gro"
+            OmegaConf.update(cfg, "system.coordinates", "ionized.gro", merge=True)
+
     # 4. grompp → md.tpr (stays in work_dir root)
     index_file = OmegaConf.select(cfg, "system.index") or None
     has_index  = index_file and (work_dir / index_file).exists()

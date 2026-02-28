@@ -19,8 +19,14 @@ const BASE = "/api";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${text}`);
+    let msg: string;
+    try {
+      const body = await res.json();
+      msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body);
+    } catch {
+      msg = await res.text().catch(() => res.statusText);
+    }
+    throw new Error(`${res.status}: ${msg}`);
   }
   return res.json() as Promise<T>;
 }
