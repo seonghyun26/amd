@@ -21,22 +21,22 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
 
       {/* Content */}
-      <div className={`max-w-[80%] space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
+      <div className={`max-w-[80%] min-w-0 space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
         {message.blocks.map((block, i) => {
           if (block.kind === "text") {
             return (
               <div
                 key={i}
-                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words ${
                   isUser
                     ? "bg-blue-600 text-white"
                     : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 }`}
               >
                 {isUser ? (
-                  <p className="whitespace-pre-wrap">{block.content}</p>
+                  <p className="whitespace-pre-wrap break-words">{block.content}</p>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-orange-600 dark:prose-code:text-orange-400">
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-orange-600 dark:prose-code:text-orange-400">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {block.content}
                     </ReactMarkdown>

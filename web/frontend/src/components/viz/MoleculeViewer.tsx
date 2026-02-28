@@ -159,7 +159,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
 
   /** Toggle buttons shown to the right of the canvas */
   const RepColumn = () => (
-    <div className="flex flex-col gap-1.5 w-[92px] flex-shrink-0 pt-0.5">
+    <div className="flex flex-col gap-1.5 w-[148px] flex-shrink-0 pt-0.5">
       <span className="text-[9px] font-semibold text-gray-600 uppercase tracking-wider text-center">
         Representation
       </span>
@@ -170,7 +170,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
             key={key}
             onClick={() => setReps((r) => ({ ...r, [key]: !r[key] }))}
             disabled={!ready}
-            className={`py-1.5 rounded-lg text-[10px] font-medium text-center transition-colors border disabled:opacity-40 ${
+            className={`py-2 rounded-lg text-xs font-medium text-center transition-colors border disabled:opacity-40 ${
               on
                 ? "bg-indigo-600 border-indigo-500 text-white"
                 : "bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
@@ -185,18 +185,18 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
         onClick={handleResetView}
         disabled={!ready}
         title="Reset view"
-        className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
       >
-        <Crosshair size={10} />
+        <Crosshair size={12} />
         Reset View
       </button>
       <button
         onClick={handleScreenshot}
         disabled={!ready}
         title="Download screenshot"
-        className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
       >
-        <Camera size={10} />
+        <Camera size={12} />
         Screenshot
       </button>
     </div>

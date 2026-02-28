@@ -67,7 +67,7 @@ export default function App() {
       />
 
       {/* Right: Chat panel */}
-      <aside className="w-80 flex-shrink-0 border-l border-gray-800 flex flex-col bg-gray-900 min-w-0">
+      <aside className="w-96 flex-shrink-0 border-l border-gray-800 flex flex-col bg-gray-900 overflow-x-hidden">
         <div className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
           <h2 className="text-sm font-semibold text-gray-200">AI Assistant</h2>
           <p className="text-xs text-gray-500 mt-0.5">Claude Opus 4.6</p>

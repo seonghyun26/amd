@@ -84,12 +84,29 @@ async def start_simulation(session_id: str):
     if needs_pdb2gmx:
         forcefield  = OmegaConf.select(cfg, "system.forcefield")  or "amber99sb-ildn"
         water_model = OmegaConf.select(cfg, "system.water_model") or "none"
-        result = gmx.run_gmx_command(
-            "pdb2gmx",
-            ["-f", coord_file, "-o", "system.gro", "-p", "topol.top",
-             "-ff", forcefield, "-water", water_model, "-ignh"],
-            work_dir=str(work_dir),
-        )
+
+        def _run_pdb2gmx(ff: str) -> dict:
+            return gmx.run_gmx_command(
+                "pdb2gmx",
+                ["-f", coord_file, "-o", "system.gro", "-p", "topol.top",
+                 "-ff", ff, "-water", water_model, "-ignh"],
+                work_dir=str(work_dir),
+            )
+
+        result = _run_pdb2gmx(forcefield)
+
+        # If the configured force field doesn't define the residue (e.g. charmm27
+        # lacks NME/ACE capping groups), fall back to amber99sb-ildn automatically.
+        if result["returncode"] != 0:
+            stderr = result.get("stderr", "")
+            if "not found in residue topology database" in stderr and forcefield != "amber99sb-ildn":
+                result = _run_pdb2gmx("amber99sb-ildn")
+                if result["returncode"] == 0:
+                    # Keep the session config in sync with the force field that worked
+                    from omegaconf import OmegaConf as _OC
+                    _OC.update(cfg, "system.forcefield", "amber99sb-ildn", merge=True)
+                    forcefield = "amber99sb-ildn"
+
         if result["returncode"] != 0:
             raise HTTPException(500, f"pdb2gmx failed:\n{result.get('stderr', '')[-2000:]}")
         top_file   = "topol.top"

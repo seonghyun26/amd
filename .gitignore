@@ -67,10 +67,12 @@ web/frontend/node_modules/
 web/frontend/.next/
 web/frontend/out/
 web/frontend/.eslintcache
+web/frontend/.env.local
+web/frontend/.env*.local
+web/frontend/.turbo/
 
 # Web — backend
 web/backend/__pycache__/
 web/__pycache__/
-*package-lock.json
-*package.json
-*.pytest_cache
+package-lock.json
+.pytest_cache/

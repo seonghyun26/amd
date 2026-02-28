@@ -149,6 +149,7 @@ function Field({
   label,
   value,
   onChange,
+  onBlur,
   type = "text",
   unit,
   hint,
@@ -156,6 +157,7 @@ function Field({
   label: string;
   value: string | number;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   type?: string;
   unit?: string;
   hint?: string;
@@ -174,6 +176,7 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       />
       {hint && <p className="mt-1 text-[11px] text-gray-600">{hint}</p>}
@@ -191,12 +194,14 @@ function SelectField({
   label,
   value,
   onChange,
+  onSave,
   options,
   hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onSave?: () => void;
   options: { value: string; label: string }[];
   hint?: string;
 }) {
@@ -205,7 +210,7 @@ function SelectField({
       <label className="block text-xs font-medium text-gray-400 mb-1">{label}</label>
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); onSave?.(); }}
         className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       >
         {options.map((o) => (
@@ -217,21 +222,6 @@ function SelectField({
   );
 }
 
-function SaveButton({ onSave, saved }: { onSave: () => void; saved: boolean }) {
-  return (
-    <button
-      onClick={onSave}
-      className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-        saved
-          ? "bg-emerald-700/30 text-emerald-400 border border-emerald-700/50"
-          : "bg-blue-600 hover:bg-blue-700 text-white"
-      }`}
-    >
-      {saved && <CheckCircle2 size={11} />}
-      {saved ? "Saved" : "Save changes"}
-    </button>
-  );
-}
 
 // ── Pill tab bar ──────────────────────────────────────────────────────
 
@@ -331,18 +321,18 @@ function ProgressTab({ sessionId }: { sessionId: string }) {
           <div className="flex items-center gap-2">
             <button
               onClick={refreshFiles}
-              className="text-gray-600 hover:text-gray-400 transition-colors"
+              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
               title="Refresh"
             >
-              <RefreshCw size={11} className={filesLoading ? "animate-spin" : ""} />
+              <RefreshCw size={15} className={filesLoading ? "animate-spin" : ""} />
             </button>
             <a
               href={downloadZipUrl(sessionId)}
               download
-              className="flex items-center gap-1 text-gray-600 hover:text-gray-400 transition-colors"
+              className="flex items-center gap-1 p-1 text-gray-500 hover:text-gray-300 transition-colors"
               title="Download ZIP"
             >
-              <Download size={11} />
+              <Download size={15} />
             </a>
           </div>
         }
@@ -482,10 +472,10 @@ function MoleculeTab({
         action={
           <button
             onClick={refreshFiles}
-            className="text-gray-600 hover:text-gray-400 transition-colors"
+            className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
             title="Refresh"
           >
-            <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         }
       >
@@ -526,6 +516,14 @@ function MoleculeTab({
                       : null}
                     {isSelected ? "Selected" : "Select"}
                   </button>
+                  <a
+                    href={downloadUrl(sessionId, f)}
+                    download={name}
+                    className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-blue-400 hover:bg-blue-900/20 border border-gray-700/50 hover:border-blue-800/40 transition-colors flex-shrink-0"
+                    title="Download file"
+                  >
+                    <Download size={11} />
+                  </a>
                   <button
                     onClick={() => handleDelete(f)}
                     disabled={isDeleting || isLoading}
@@ -559,12 +557,10 @@ function GromacsTab({
   cfg,
   onChange,
   onSave,
-  saved,
 }: {
   cfg: Record<string, unknown>;
   onChange: (k: string, v: unknown) => void;
   onSave: () => void;
-  saved: boolean;
 }) {
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
@@ -572,10 +568,7 @@ function GromacsTab({
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">GROMACS Parameters</h3>
-        <SaveButton onSave={onSave} saved={saved} />
-      </div>
+      <h3 className="text-sm font-semibold text-gray-200">GROMACS Parameters</h3>
 
       {/* System */}
       <Section icon={<FlaskConical size={13} />} title="System" accent="emerald">
@@ -584,6 +577,7 @@ function GromacsTab({
             label="Force Field"
             value={String(system.forcefield ?? "amber99sb-ildn")}
             onChange={(v) => onChange("system.forcefield", v)}
+            onSave={onSave}
             options={[
               { value: "amber99sb-ildn", label: "AMBER99SB-ILDN" },
               { value: "charmm27",       label: "CHARMM27"       },
@@ -594,6 +588,7 @@ function GromacsTab({
             label="Solvent"
             value={String(system.water_model ?? "tip3p")}
             onChange={(v) => onChange("system.water_model", v)}
+            onSave={onSave}
             options={[
               { value: "none",  label: "Vacuum"      },
               { value: "tip3p", label: "TIP3P Water" },
@@ -629,6 +624,7 @@ function GromacsTab({
                 type="number"
                 value={String(method.nsteps ?? "")}
                 onChange={(v) => onChange("method.nsteps", Number(v))}
+                onBlur={onSave}
                 hint="Total MD steps to run."
               />
               <Field
@@ -636,6 +632,7 @@ function GromacsTab({
                 type="number"
                 value={String(Number(gromacs.dt ?? 0.002) * 1000)}
                 onChange={(v) => onChange("gromacs.dt", Number(v) / 1000)}
+                onBlur={onSave}
                 unit="fs"
                 hint="2 fs is standard."
               />
@@ -652,6 +649,7 @@ function GromacsTab({
             type="number"
             value={String(Array.isArray(gromacs.ref_t) ? (gromacs.ref_t as number[])[0] : gromacs.ref_t ?? gromacs.temperature ?? "300")}
             onChange={(v) => onChange("gromacs.ref_t", [Number(v)])}
+            onBlur={onSave}
             unit="K"
             hint="Target temperature (V-rescale)."
           />
@@ -660,6 +658,7 @@ function GromacsTab({
             type="number"
             value={String(Array.isArray(gromacs.tau_t) ? (gromacs.tau_t as number[])[0] : gromacs.tau_t ?? "0.1")}
             onChange={(v) => onChange("gromacs.tau_t", [Number(v)])}
+            onBlur={onSave}
             unit="ps"
             hint="τ for V-rescale coupling."
           />
@@ -674,6 +673,7 @@ function GromacsTab({
             type="number"
             value={String(gromacs.rcoulomb ?? "1.0")}
             onChange={(v) => onChange("gromacs.rcoulomb", Number(v))}
+            onBlur={onSave}
             unit="nm"
           />
           <Field
@@ -681,6 +681,7 @@ function GromacsTab({
             type="number"
             value={String(gromacs.rvdw ?? "1.0")}
             onChange={(v) => onChange("gromacs.rvdw", Number(v))}
+            onBlur={onSave}
             unit="nm"
           />
         </FieldGrid>
@@ -703,13 +704,11 @@ function MethodTab({
   cfg,
   onChange,
   onSave,
-  saved,
 }: {
   sessionId: string;
   cfg: Record<string, unknown>;
   onChange: (k: string, v: unknown) => void;
   onSave: () => void;
-  saved: boolean;
 }) {
   const method = (cfg.method ?? {}) as Record<string, unknown>;
   const hills = (method.hills ?? {}) as Record<string, unknown>;
@@ -723,14 +722,12 @@ function MethodTab({
   const handleMethodChange = (id: string) => {
     onChange("method._target_name", id);
     setMethodOpen(false);
+    onSave();
   };
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">Simulation Method</h3>
-        <SaveButton onSave={onSave} saved={saved} />
-      </div>
+      <h3 className="text-sm font-semibold text-gray-200">Simulation Method</h3>
 
       {/* Current method + toggle */}
       <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 overflow-hidden">
@@ -795,6 +792,7 @@ function MethodTab({
               type="number"
               value={String(hills.height ?? "")}
               onChange={(v) => onChange("method.hills.height", Number(v))}
+              onBlur={onSave}
               unit="kJ/mol"
               hint="Gaussian bias height."
             />
@@ -803,6 +801,7 @@ function MethodTab({
               type="number"
               value={String(hills.pace ?? "")}
               onChange={(v) => onChange("method.hills.pace", Number(v))}
+              onBlur={onSave}
               unit="steps"
               hint="Deposition frequency."
             />
@@ -813,6 +812,7 @@ function MethodTab({
               type="number"
               value={String(Array.isArray(hills.sigma) ? hills.sigma[0] : hills.sigma ?? "")}
               onChange={(v) => onChange("method.hills.sigma", [Number(v)])}
+              onBlur={onSave}
               hint="Gaussian width (CV units)."
             />
             <Field
@@ -820,6 +820,7 @@ function MethodTab({
               type="number"
               value={String(hills.biasfactor ?? "")}
               onChange={(v) => onChange("method.hills.biasfactor", Number(v))}
+              onBlur={onSave}
               hint="Well-tempered factor (5–15)."
             />
           </FieldGrid>
@@ -1023,7 +1024,7 @@ type SimState = "idle" | "setting_up" | "running";
 
 export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onNewSession }: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
-  const [saved, setSaved] = useState(false);
+  const cfgRef = useRef<Record<string, unknown>>({});
   const [activeTab, setActiveTab] = useState("progress");
   const [selectedMolecule, setSelectedMolecule] = useState<{ content: string; name: string } | null>(null);
   const [simState, setSimState] = useState<SimState>("idle");
@@ -1075,17 +1076,17 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           ? { ...obj, [head]: value }
           : { ...obj, [head]: setDeep((obj[head] as Record<string, unknown>) ?? {}, tail) };
       };
-      return { ...c, [section]: setDeep((c[section] as Record<string, unknown>) ?? {}, rest) };
+      const next = { ...c, [section]: setDeep((c[section] as Record<string, unknown>) ?? {}, rest) };
+      cfgRef.current = next;
+      return next;
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!sessionId) return;
-    await updateSessionConfig(sessionId, cfg).catch(() => {});
+    await updateSessionConfig(sessionId, cfgRef.current).catch(() => {});
     await generateSessionFiles(sessionId).catch(() => {});
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  }, [sessionId]);
 
   const handleStartMD = async () => {
     if (!sessionId || simState !== "idle") return;
@@ -1193,8 +1194,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         }}
       />
     ),
-    gromacs:  <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
-    method:   <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} saved={saved} />,
+    gromacs:  <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleSave} />,
+    method:   <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} />,
   };
 
   return (
