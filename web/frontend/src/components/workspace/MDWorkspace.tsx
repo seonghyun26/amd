@@ -437,6 +437,12 @@ function FilePreviewModal({
       .finally(() => setLoading(false));
   }, [sessionId, path, kind]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -556,6 +562,7 @@ function ProgressTab({
   const [agentOpen, setAgentOpen] = useState(false);
   const [simFiles, setSimFiles] = useState<string[]>([]);
   const [allFiles, setAllFiles] = useState<string[]>([]);
+  const [filesLoadedFor, setFilesLoadedFor] = useState(""); // tracks which sessionId allFiles belongs to
   const [filesLoading, setFilesLoading] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -585,11 +592,13 @@ function ProgressTab({
     // Clear stale files immediately so old session's trajectory doesn't linger
     setAllFiles([]);
     setSimFiles([]);
+    setFilesLoadedFor("");
     setFilesLoading(true);
     listFiles(sessionId)
       .then(({ files }) => {
         setAllFiles(files);
         setSimFiles(files.filter((f) => !isMolFile(f)));
+        setFilesLoadedFor(sessionId);
       })
       .catch(() => {})
       .finally(() => setFilesLoading(false));
@@ -680,7 +689,10 @@ function ProgressTab({
     }
   };
 
-  const _allNames = allFiles.map((f) => ({
+  // Only use file lists that were fetched for the current session to avoid
+  // a stale-render window where allFiles still belongs to a previous session.
+  const _freshFiles = filesLoadedFor === sessionId ? allFiles : [];
+  const _allNames = _freshFiles.map((f) => ({
     path: f,
     normalizedPath: f.replace(/\\/g, "/").toLowerCase(),
     name: fileBaseName(f),
@@ -788,32 +800,13 @@ function ProgressTab({
           ) : undefined
         }
       >
-        {runStatus === "finished" && trajectoryFile && topologyFile ? (
-          <TrajectoryViewer
-            key={trajectoryKey}
-            sessionId={sessionId}
-            topologyPath={topologyFile.path}
-            trajectoryPath={trajectoryFile.path}
-          />
-        ) : (
-          <div
-            className="flex items-center justify-center rounded-xl border border-gray-700/60 bg-gray-900/50"
-            style={{ height: "360px" }}
-          >
-            {runStatus === "finished" && filesLoading ? (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <Loader2 size={18} className="animate-spin" />
-                <span className="text-xs">Loading trajectory…</span>
-              </div>
-            ) : (
-              <p className="text-xs text-gray-600 px-4 text-center">
-                {runStatus === "finished"
-                  ? "No trajectory file found. Check simulation output."
-                  : "Trajectory will appear here after the simulation completes."}
-              </p>
-            )}
-          </div>
-        )}
+        <TrajectoryViewer
+          key={`${sessionId}-${trajectoryKey}`}
+          sessionId={sessionId}
+          topologyPath={runStatus === "finished" ? (topologyFile?.path ?? null) : null}
+          trajectoryPath={runStatus === "finished" ? (trajectoryFile?.path ?? null) : null}
+          isLoading={runStatus !== "finished" || filesLoading || filesLoadedFor !== sessionId}
+        />
       </Section>
 
       <div className="space-y-4 pt-2">

@@ -7,8 +7,10 @@ import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 
 interface Props {
   sessionId: string;
-  topologyPath: string;
-  trajectoryPath: string;
+  topologyPath: string | null;
+  trajectoryPath: string | null;
+  /** True while the parent is still fetching the file list */
+  isLoading?: boolean;
 }
 
 declare global {
@@ -68,7 +70,7 @@ function encodePathsB64(xtc: string, top: string): string {
     .replace(/=/g, "");
 }
 
-export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath }: Props) {
+export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath, isLoading = false }: Props) {
   const containerRef     = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef         = useRef<any>(null);
@@ -118,9 +120,16 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     setFrame(0);
     setTotalFrames(null);
     setStructInfo(null);
-    setLoadingStage("ngl");
     initialOrientRef.current = null;
     trajectoryRef.current = null;
+
+    // No paths yet — keep canvas in a waiting state, don't init NGL
+    if (!topologyPath || !trajectoryPath) {
+      setLoadingStage(null);
+      return;
+    }
+
+    setLoadingStage("ngl");
 
     // Fetch topology content in parallel for the struct-info overlay
     getFileContent(sessionId, topologyPath)
@@ -302,7 +311,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       .then((blob: any) => {
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
-        const base = topologyPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
+        const base = (topologyPath ?? "").split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
         a.href     = url;
         a.download = `${base}_trajectory_view.png`;
         document.body.appendChild(a);
@@ -400,7 +409,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         gif.on("finished", (blob: Blob) => {
           const url  = URL.createObjectURL(blob);
           const a    = document.createElement("a");
-          const base = topologyPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
+          const base = (topologyPath ?? "").split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
           a.href     = url;
           a.download = `${base}_trajectory.gif`;
           document.body.appendChild(a);
@@ -431,6 +440,17 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 gap-2 z-10">
             <AlertCircle size={18} />
             <span className="text-xs px-4 text-center break-all">{error}</span>
+          </div>
+        ) : isLoading || !topologyPath || !trajectoryPath ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-2 z-10">
+            {isLoading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span className="text-xs">Loading trajectory…</span>
+              </>
+            ) : (
+              <span className="text-xs text-gray-600 px-4 text-center">No trajectory file found. Check simulation output.</span>
+            )}
           </div>
         ) : loadingStage ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-2 z-10">
