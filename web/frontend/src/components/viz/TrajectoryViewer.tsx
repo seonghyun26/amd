@@ -320,6 +320,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     playerRef.current?.pause?.();
     setPlaying(false);
 
+    let workerBlobUrl: string | null = null;
+
     try {
       // Load gif.js from CDN if not already loaded
       await new Promise<void>((resolve, reject) => {
@@ -339,12 +341,18 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         document.head.appendChild(s);
       });
 
+      // Fetch the worker script and create a same-origin blob URL to bypass CORS restrictions
+      // (browsers block new Worker(cross-origin-url) without CORP headers)
+      const workerResp = await fetch("https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js");
+      if (!workerResp.ok) throw new Error("Failed to fetch GIF worker script");
+      workerBlobUrl = URL.createObjectURL(await workerResp.blob());
+
       const GIF = window.GIF;
       const container = containerRef.current!;
       const gif = new GIF({
         workers: 2,
         quality: 10,
-        workerScript: "https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js",
+        workerScript: workerBlobUrl,
         width:  container.clientWidth,
         height: container.clientHeight,
       });
@@ -355,9 +363,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       const step = Math.max(1, Math.floor(n / maxFrames));
 
       for (let i = 0; i < n; i += step) {
-        trajectoryRef.current.setFrame(i);
-        // Allow NGL to render the new frame before capturing
-        await new Promise((r) => setTimeout(r, 80));
+        // Wait for the frame to actually render (frameChanged signal + render delay)
+        await new Promise<void>((resolveFrame) => {
+          let settled = false;
+          const settle = () => {
+            if (settled) return;
+            settled = true;
+            try { trajectoryRef.current?.signals?.frameChanged?.remove(onFrameChanged); } catch { /* ignore */ }
+            // Extra render delay after frame data arrives
+            setTimeout(resolveFrame, 120);
+          };
+          const onFrameChanged = () => settle();
+          try {
+            trajectoryRef.current?.signals?.frameChanged?.add(onFrameChanged);
+          } catch { /* ignore */ }
+          trajectoryRef.current!.setFrame(i);
+          // Fallback: resolve after 2 s if frameChanged never fires
+          setTimeout(() => settle(), 2000);
+        });
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const blob: Blob = await stageRef.current!.makeImage({ factor: 1, antialias: false, trim: false, transparent: false }) as any;
         const imgUrl = URL.createObjectURL(blob);
@@ -372,7 +396,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         });
       }
 
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         gif.on("finished", (blob: Blob) => {
           const url  = URL.createObjectURL(blob);
           const a    = document.createElement("a");
@@ -385,11 +409,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           setTimeout(() => URL.revokeObjectURL(url), 1000);
           resolve();
         });
+        gif.on("error", (err: unknown) => reject(new Error(String(err))));
         gif.render();
       });
-    } catch {
-      /* silently ignore GIF export errors */
+    } catch (err) {
+      console.error("GIF export failed:", err);
     } finally {
+      if (workerBlobUrl) URL.revokeObjectURL(workerBlobUrl);
       setGifGenerating(false);
     }
   };
@@ -456,7 +482,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
               <button
                 key={key}
                 onClick={() => setReps((r) => ({ ...r, [key]: !r[key as keyof typeof r] }))}
-                disabled={!ready}
+                disabled={!ready || gifGenerating}
                 className={`px-2 py-1 rounded text-[10px] border transition-colors disabled:opacity-40 ${
                   on
                     ? "bg-indigo-600 border-indigo-500 text-white"
@@ -471,7 +497,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         <div className="flex gap-2">
           <button
             onClick={handlePlay}
-            disabled={!ready || playing}
+            disabled={!ready || playing || gifGenerating}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-emerald-700/60 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-40"
           >
             <Play size={11} />
@@ -479,7 +505,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           </button>
           <button
             onClick={handlePause}
-            disabled={!ready || !playing}
+            disabled={!ready || !playing || gifGenerating}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-amber-700/60 bg-amber-900/30 text-amber-300 hover:bg-amber-800/40 disabled:opacity-40"
           >
             <Pause size={11} />
@@ -487,7 +513,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           </button>
           <button
             onClick={handleResetView}
-            disabled={!ready}
+            disabled={!ready || gifGenerating}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-700/60 bg-gray-800/60 text-gray-300 hover:bg-gray-700/60 disabled:opacity-40"
           >
             <Crosshair size={11} />
@@ -495,7 +521,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           </button>
           <button
             onClick={handleScreenshot}
-            disabled={!ready}
+            disabled={!ready || gifGenerating}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-700/60 bg-gray-800/60 text-gray-300 hover:bg-gray-700/60 disabled:opacity-40"
           >
             <Camera size={11} />
@@ -524,7 +550,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           step={1}
           value={Math.min(frame, Math.max((totalFrames ?? 1) - 1, 0))}
           onChange={(e) => handleSeek(Number(e.currentTarget.value))}
-          disabled={!ready || !totalFrames || totalFrames <= 1}
+          disabled={!ready || !totalFrames || totalFrames <= 1 || gifGenerating}
           className="w-full accent-indigo-500 disabled:opacity-40"
         />
       </div>

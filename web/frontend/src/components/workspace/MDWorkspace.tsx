@@ -544,12 +544,14 @@ function ProgressTab({
   exitCode,
   totalSteps,
   runStartedAt,
+  runFinishedAt,
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed";
   exitCode: number | null;
   totalSteps: number;
   runStartedAt: number | null;
+  runFinishedAt?: number | null;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const [simFiles, setSimFiles] = useState<string[]>([]);
@@ -699,7 +701,9 @@ function ProgressTab({
     ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
     : 0;
   const pct = runStatus === "finished" ? 100 : pctRaw;
-  const elapsedMs = runStartedAt ? Math.max(0, nowMs - runStartedAt) : 0;
+  const elapsedMs = runStartedAt
+    ? (runFinishedAt ? Math.max(0, runFinishedAt - runStartedAt) : Math.max(0, nowMs - runStartedAt))
+    : 0;
   const elapsedLabel = runStartedAt ? formatElapsed(elapsedMs) : "0s";
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
   const computedNsPerDay = elapsedMs > 0 && simNs > 0
@@ -710,7 +714,7 @@ function ProgressTab({
     : runStatus === "finished"
       ? { label: "Finished", className: "text-blue-400" }
       : runStatus === "failed"
-        ? { label: `Failed${exitCode !== null ? ` (exit ${exitCode})` : ""}`, className: "text-yellow-400" }
+        ? { label: `Failed${exitCode !== null ? ` (exit ${exitCode})` : ""}`, className: "text-red-400" }
         : { label: "Standby", className: "text-gray-400" };
 
   return (
@@ -784,12 +788,7 @@ function ProgressTab({
           ) : undefined
         }
       >
-        {runStatus === "finished" && filesLoading ? (
-          <div className="flex items-center gap-2 py-2 text-gray-500">
-            <Loader2 size={13} className="animate-spin" />
-            <span className="text-xs">Loading trajectory…</span>
-          </div>
-        ) : runStatus === "finished" && trajectoryFile && topologyFile ? (
+        {runStatus === "finished" && trajectoryFile && topologyFile ? (
           <TrajectoryViewer
             key={trajectoryKey}
             sessionId={sessionId}
@@ -797,11 +796,23 @@ function ProgressTab({
             trajectoryPath={trajectoryFile.path}
           />
         ) : (
-          <p className="text-xs text-gray-600 py-1">
-            {runStatus === "finished"
-              ? "No trajectory file found. Check simulation output."
-              : "Trajectory will appear here after the simulation completes."}
-          </p>
+          <div
+            className="flex items-center justify-center rounded-xl border border-gray-700/60 bg-gray-900/50"
+            style={{ height: "360px" }}
+          >
+            {runStatus === "finished" && filesLoading ? (
+              <div className="flex flex-col items-center gap-2 text-gray-500">
+                <Loader2 size={18} className="animate-spin" />
+                <span className="text-xs">Loading trajectory…</span>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 px-4 text-center">
+                {runStatus === "finished"
+                  ? "No trajectory file found. Check simulation output."
+                  : "Trajectory will appear here after the simulation completes."}
+              </p>
+            )}
+          </div>
         )}
       </Section>
 
@@ -1990,6 +2001,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [simRunStatus, setSimRunStatus] = useState<"standby" | "running" | "finished" | "failed">("standby");
   const [simExitCode, setSimExitCode] = useState<number | null>(null);
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
+  const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, appendSSEEvent } = useSessionStore();
@@ -1999,12 +2011,14 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
   // Reset simulation state when switching sessions, preserving terminal states from the store
   useEffect(() => {
-    const stored = sessionsRef.current.find((s) => s.session_id === sessionId)?.run_status;
-    const preserved = stored === "finished" || stored === "failed" ? stored : "standby";
+    const stored = sessionsRef.current.find((s) => s.session_id === sessionId);
+    const preserved = stored?.run_status === "finished" || stored?.run_status === "failed" ? stored.run_status : "standby";
     setSimState("standby");
     setSimRunStatus(preserved);
     setSimExitCode(null);
-    setSimStartedAt(null);
+    // Restore wall-time timestamps persisted in session.json
+    setSimStartedAt(stored?.started_at ? stored.started_at * 1000 : null);
+    setSimFinishedAt(stored?.finished_at ? stored.finished_at * 1000 : null);
     setPauseConfirmOpen(false);
     setGromacsSaveState("idle");
   }, [sessionId]);
@@ -2090,7 +2104,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             : "standby";
         setSimRunStatus(mappedStatus);
         if (mappedStatus === "failed") setSimExitCode(status.exit_code ?? null);
-        if (mappedStatus === "finished") setSimExitCode(status.exit_code ?? 0);
+        if (mappedStatus === "finished") { setSimExitCode(status.exit_code ?? 0); setSimFinishedAt((prev) => prev ?? Date.now()); }
         if (mappedStatus === "running") setSimStartedAt((prev) => prev ?? Date.now());
         setSimState(status.running ? "running" : "standby");
         if (!status.running) setPauseConfirmOpen(false);
@@ -2159,6 +2173,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimRunStatus("running");
     setSimExitCode(null);
     setSimStartedAt(null);
+    setSimFinishedAt(null);
     try {
       const result = await startSimulation(sessionId);
       appendSSEEvent({ type: "text_delta", text: `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}` });
@@ -2180,6 +2195,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimState("standby");
     setSimRunStatus("standby");
     setSimStartedAt(null);
+    setSimFinishedAt(null);
   };
 
   const handleSelectMolecule = async (m: { content: string; name: string }) => {
@@ -2270,6 +2286,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         exitCode={simExitCode}
         totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
         runStartedAt={simStartedAt}
+        runFinishedAt={simFinishedAt}
       />
     ),
     molecule: (

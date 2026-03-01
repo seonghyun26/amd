@@ -18,15 +18,38 @@ _COORD_EXTS = {".gro", ".pdb"}
 
 
 def _persist_run_status(session: object, status: str) -> None:
-    """Write run_status to the session-root session.json so the sidebar can show it."""
+    """Write run_status to session.json, enforcing the FSM.
+
+    Allowed transitions:
+      standby  → running, failed
+      running  → finished, failed, standby (manual stop)
+      failed   → running
+      finished → (terminal — no further transitions)
+    """
     try:
         work = Path(session.work_dir).resolve()  # type: ignore[attr-defined]
         session_root = work.parent if work.name == "data" else work
         meta_path = session_root / "session.json"
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-        if meta.get("run_status") == status:
+        current = meta.get("run_status", "standby")
+
+        if current == status:
             return
+        # "finished" is a terminal state — no further transitions allowed
+        if current == "finished":
+            return
+        # "failed" can only transition to "running" (new simulation attempt)
+        if current == "failed" and status != "running":
+            return
+
         meta["run_status"] = status
+        # Record wall-time timestamps
+        if status == "running":
+            meta["started_at"] = time.time()
+            meta.pop("finished_at", None)
+        elif status in ("finished", "failed"):
+            meta.setdefault("finished_at", time.time())
+
         meta_path.write_text(json.dumps(meta, indent=2))
     except Exception:
         pass
@@ -135,7 +158,8 @@ async def start_simulation(session_id: str):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    _persist_run_status(session, "running")
+    # Status is NOT set to "running" here — it is only set after mdrun actually starts.
+    # Any preparation failure will set status to "failed" via the except block below.
 
     work_dir = Path(session.work_dir)
     cfg = session.agent.cfg
@@ -145,166 +169,173 @@ async def start_simulation(session_id: str):
     water_model   = OmegaConf.select(cfg, "system.water_model")   or "none"
     box_clearance = float(OmegaConf.select(cfg, "gromacs.box_clearance") or 1.5)
 
-    # 1. Generate md.mdp from current config
-    from md_agent.config.hydra_utils import generate_mdp_from_config
-    generate_mdp_from_config(cfg, str(work_dir / "md.mdp"))
+    try:
+        # 1. Generate md.mdp from current config
+        from md_agent.config.hydra_utils import generate_mdp_from_config
+        generate_mdp_from_config(cfg, str(work_dir / "md.mdp"))
 
-    # 2. Find the raw input coordinate file (the original PDB/GRO the user uploaded)
-    preferred_coord = OmegaConf.select(cfg, "system.coordinates") or ""
-    # Exclude derived GROMACS outputs so preprocessing always starts from raw input.
-    input_coord = _find_source_coord(work_dir, preferred_coord)
-    if not input_coord:
-        raise HTTPException(400, "No coordinate file (.gro or .pdb) found in session directory.")
-    input_stem = Path(input_coord).stem
-    system_gro = f"{input_stem}_system.gro"
-    box_gro = f"{input_stem}_box.gro"
-    solvated_gro = f"{input_stem}_solvated.gro"
-    ionized_gro = f"{input_stem}_ionized.gro"
+        # 2. Find the raw input coordinate file (the original PDB/GRO the user uploaded)
+        preferred_coord = OmegaConf.select(cfg, "system.coordinates") or ""
+        # Exclude derived GROMACS outputs so preprocessing always starts from raw input.
+        input_coord = _find_source_coord(work_dir, preferred_coord)
+        if not input_coord:
+            raise HTTPException(400, "No coordinate file (.gro or .pdb) found in session directory.")
+        input_stem = Path(input_coord).stem
+        system_gro = f"{input_stem}_system.gro"
+        box_gro = f"{input_stem}_box.gro"
+        solvated_gro = f"{input_stem}_solvated.gro"
+        ionized_gro = f"{input_stem}_ionized.gro"
 
-    # ── Step A: pdb2gmx ─────────────────────────────────────────────────
-    # Always regenerate topology/processed coordinates from the selected raw input.
-    # This avoids stale topol.top vs *.gro mismatches when users switch solvent/model.
-    _archive_existing(work_dir, system_gro, "topol.top", "posre*.itp", "mdout.mdp")
-    _remove_existing(work_dir, system_gro, "topol.top", "mdout.mdp")
-    # Remove stale prefixed intermediates from prior runs with a different input file.
-    _remove_matching(work_dir, "*_system.gro", "*_box.gro", "*_solvated.gro", "*_ionized.gro")
+        # ── Step A: pdb2gmx ─────────────────────────────────────────────────
+        # Always regenerate topology/processed coordinates from the selected raw input.
+        # This avoids stale topol.top vs *.gro mismatches when users switch solvent/model.
+        _archive_existing(work_dir, system_gro, "topol.top", "posre*.itp", "mdout.mdp")
+        _remove_existing(work_dir, system_gro, "topol.top", "mdout.mdp")
+        # Remove stale prefixed intermediates from prior runs with a different input file.
+        _remove_matching(work_dir, "*_system.gro", "*_box.gro", "*_solvated.gro", "*_ionized.gro")
 
-    def _run_pdb2gmx(ff: str) -> dict:
-        return gmx.run_gmx_command(
-            "pdb2gmx",
-            ["-f", input_coord, "-o", system_gro, "-p", "topol.top",
-             "-ff", ff, "-water", water_model, "-ignh"],
-            work_dir=str(work_dir),
-        )
-
-    result = _run_pdb2gmx(forcefield)
-
-    # Fall back to amber99sb-ildn if the chosen FF lacks the residue
-    if result["returncode"] != 0:
-        stderr = result.get("stderr", "")
-        if "not found in residue topology database" in stderr and forcefield != "amber99sb-ildn":
-            result = _run_pdb2gmx("amber99sb-ildn")
-            if result["returncode"] == 0:
-                from omegaconf import OmegaConf as _OC
-                _OC.update(cfg, "system.forcefield", "amber99sb-ildn", merge=True)
-                forcefield = "amber99sb-ildn"
-
-    if result["returncode"] != 0:
-        raise HTTPException(500, f"pdb2gmx failed:\n{result.get('stderr', '')[-2000:]}")
-    top_file = "topol.top"
-
-    # ── Step B: solvation + ionisation ─────────────────────────────────
-    # Rebuild every run to keep coordinates/topology consistent after UI changes.
-    if water_model != "none":
-        if not (work_dir / system_gro).exists():
-            raise HTTPException(
-                500,
-                f"{system_gro} not found — pdb2gmx must succeed before solvation.",
+        def _run_pdb2gmx(ff: str) -> dict:
+            return gmx.run_gmx_command(
+                "pdb2gmx",
+                ["-f", input_coord, "-o", system_gro, "-p", "topol.top",
+                 "-ff", ff, "-water", water_model, "-ignh"],
+                work_dir=str(work_dir),
             )
 
-        _archive_existing(work_dir, ionized_gro, solvated_gro, box_gro, "ions.tpr")
-        _remove_existing(work_dir, ionized_gro, solvated_gro, box_gro, "ions.tpr", "mdout.mdp")
+        result = _run_pdb2gmx(forcefield)
 
-        # B1. Add simulation box using configured clearance
-        r = gmx.run_gmx_command(
-            "editconf",
-            ["-f", system_gro, "-o", box_gro,
-             "-c", "-d", str(box_clearance), "-bt", "dodecahedron"],
-            work_dir=str(work_dir),
-        )
-        if r["returncode"] != 0:
-            raise HTTPException(500, f"editconf failed:\n{r.get('stderr', '')[-2000:]}")
+        # Fall back to amber99sb-ildn if the chosen FF lacks the residue
+        if result["returncode"] != 0:
+            stderr = result.get("stderr", "")
+            if "not found in residue topology database" in stderr and forcefield != "amber99sb-ildn":
+                result = _run_pdb2gmx("amber99sb-ildn")
+                if result["returncode"] == 0:
+                    from omegaconf import OmegaConf as _OC
+                    _OC.update(cfg, "system.forcefield", "amber99sb-ildn", merge=True)
+                    forcefield = "amber99sb-ildn"
 
-        # B2. Fill with water
-        r = gmx.run_gmx_command(
-            "solvate",
-            ["-cp", box_gro, "-cs", "spc216.gro",
-             "-o", solvated_gro, "-p", "topol.top"],
-            work_dir=str(work_dir),
-        )
-        if r["returncode"] != 0:
-            raise HTTPException(500, f"solvate failed:\n{r.get('stderr', '')[-2000:]}")
+        if result["returncode"] != 0:
+            raise HTTPException(500, f"pdb2gmx failed:\n{result.get('stderr', '')[-2000:]}")
+        top_file = "topol.top"
 
-        # B3. grompp → ions.tpr (net-charge warning expected; genion will fix it)
-        r = gmx.grompp(
+        # ── Step B: solvation + ionisation ─────────────────────────────────
+        # Rebuild every run to keep coordinates/topology consistent after UI changes.
+        if water_model != "none":
+            if not (work_dir / system_gro).exists():
+                raise HTTPException(
+                    500,
+                    f"{system_gro} not found — pdb2gmx must succeed before solvation.",
+                )
+
+            _archive_existing(work_dir, ionized_gro, solvated_gro, box_gro, "ions.tpr")
+            _remove_existing(work_dir, ionized_gro, solvated_gro, box_gro, "ions.tpr", "mdout.mdp")
+
+            # B1. Add simulation box using configured clearance
+            r = gmx.run_gmx_command(
+                "editconf",
+                ["-f", system_gro, "-o", box_gro,
+                 "-c", "-d", str(box_clearance), "-bt", "dodecahedron"],
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"editconf failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # B2. Fill with water
+            r = gmx.run_gmx_command(
+                "solvate",
+                ["-cp", box_gro, "-cs", "spc216.gro",
+                 "-o", solvated_gro, "-p", "topol.top"],
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"solvate failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # B3. grompp → ions.tpr (net-charge warning expected; genion will fix it)
+            r = gmx.grompp(
+                mdp_file="md.mdp",
+                topology_file="topol.top",
+                coordinate_file=solvated_gro,
+                output_tpr="ions.tpr",
+                max_warnings=20,
+            )
+            if not r["success"]:
+                raise HTTPException(500, f"grompp (ions) failed:\n{r.get('stderr', '')[-2000:]}")
+
+            # B4. Replace water molecules with Na+/Cl- to neutralise
+            r = gmx.run_gmx_command(
+                "genion",
+                ["-s", "ions.tpr", "-o", ionized_gro, "-p", "topol.top",
+                 "-pname", "NA", "-nname", "CL", "-neutral"],
+                stdin_text="SOL\n",
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"genion failed:\n{r.get('stderr', '')[-2000:]}")
+
+            coord_file = ionized_gro
+            OmegaConf.update(cfg, "system.coordinates", ionized_gro, merge=True)
+        else:
+            # Vacuum: always rebuild <input>_box.gro from freshly generated <input>_system.gro.
+            _archive_existing(work_dir, box_gro)
+            _remove_existing(work_dir, box_gro)
+            _src = system_gro if (work_dir / system_gro).exists() else input_coord
+            r = gmx.run_gmx_command(
+                "editconf",
+                ["-f", _src, "-o", box_gro,
+                 "-c", "-d", str(box_clearance), "-bt", "cubic"],
+                work_dir=str(work_dir),
+            )
+            if r["returncode"] != 0:
+                raise HTTPException(500, f"editconf (vacuum) failed:\n{r.get('stderr', '')[-2000:]}")
+
+            coord_file = box_gro
+
+        # ── Step C: production grompp → md.tpr ─────────────────────────────
+        _archive_existing(work_dir, "md.tpr", "mdout.mdp")
+        index_file = OmegaConf.select(cfg, "system.index") or None
+        has_index  = index_file and (work_dir / index_file).exists()
+        grompp = gmx.grompp(
             mdp_file="md.mdp",
-            topology_file="topol.top",
-            coordinate_file=solvated_gro,
-            output_tpr="ions.tpr",
-            max_warnings=20,
+            topology_file=top_file,
+            coordinate_file=coord_file,
+            output_tpr="md.tpr",
+            index_file=index_file if has_index else None,
+            max_warnings=5,
         )
-        if not r["success"]:
-            raise HTTPException(500, f"grompp (ions) failed:\n{r.get('stderr', '')[-2000:]}")
+        if not grompp["success"]:
+            raise HTTPException(500, f"grompp failed:\n{grompp.get('stderr', '')[-2000:]}")
 
-        # B4. Replace water molecules with Na+/Cl- to neutralise
-        r = gmx.run_gmx_command(
-            "genion",
-            ["-s", "ions.tpr", "-o", ionized_gro, "-p", "topol.top",
-             "-pname", "NA", "-nname", "CL", "-neutral"],
-            stdin_text="SOL\n",
-            work_dir=str(work_dir),
-        )
-        if r["returncode"] != 0:
-            raise HTTPException(500, f"genion failed:\n{r.get('stderr', '')[-2000:]}")
+        # ── Step D: launch mdrun (non-blocking) ────────────────────────────
+        sim_dir = work_dir / _SIM_SUBDIR
+        sim_dir.mkdir(exist_ok=True)
+        output_prefix = f"{_SIM_SUBDIR}/md"
+        # Ensure a fresh Docker-backed mdrun process per launch.
+        try:
+            gmx._cleanup()
+        except Exception:
+            pass
+        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix)
+        expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
+        session.sim_status = {
+            "status": "running",
+            "started_at": time.time(),
+            "output_prefix": output_prefix,
+            "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
+            "pid": mdrun["pid"],
+        }
+        # Only persist "running" after mdrun has actually started
+        _persist_run_status(session, "running")
 
-        coord_file = ionized_gro
-        OmegaConf.update(cfg, "system.coordinates", ionized_gro, merge=True)
-    else:
-        # Vacuum: always rebuild <input>_box.gro from freshly generated <input>_system.gro.
-        _archive_existing(work_dir, box_gro)
-        _remove_existing(work_dir, box_gro)
-        _src = system_gro if (work_dir / system_gro).exists() else input_coord
-        r = gmx.run_gmx_command(
-            "editconf",
-            ["-f", _src, "-o", box_gro,
-             "-c", "-d", str(box_clearance), "-bt", "cubic"],
-            work_dir=str(work_dir),
-        )
-        if r["returncode"] != 0:
-            raise HTTPException(500, f"editconf (vacuum) failed:\n{r.get('stderr', '')[-2000:]}")
+        return {
+            "status": "running",
+            "pid": mdrun["pid"],
+            "expected_files": mdrun["expected_files"],
+        }
 
-        coord_file = box_gro
-
-    # ── Step C: production grompp → md.tpr ─────────────────────────────
-    _archive_existing(work_dir, "md.tpr", "mdout.mdp")
-    index_file = OmegaConf.select(cfg, "system.index") or None
-    has_index  = index_file and (work_dir / index_file).exists()
-    grompp = gmx.grompp(
-        mdp_file="md.mdp",
-        topology_file=top_file,
-        coordinate_file=coord_file,
-        output_tpr="md.tpr",
-        index_file=index_file if has_index else None,
-        max_warnings=5,
-    )
-    if not grompp["success"]:
-        raise HTTPException(500, f"grompp failed:\n{grompp.get('stderr', '')[-2000:]}")
-
-    # ── Step D: launch mdrun (non-blocking) ────────────────────────────
-    sim_dir = work_dir / _SIM_SUBDIR
-    sim_dir.mkdir(exist_ok=True)
-    output_prefix = f"{_SIM_SUBDIR}/md"
-    # Ensure a fresh Docker-backed mdrun process per launch.
-    try:
-        gmx._cleanup()
-    except Exception:
-        pass
-    mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix)
-    expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
-    session.sim_status = {
-        "status": "running",
-        "started_at": time.time(),
-        "output_prefix": output_prefix,
-        "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
-        "pid": mdrun["pid"],
-    }
-    _persist_run_status(session, "running")
-
-    return {
-        "status": "running",
-        "pid": mdrun["pid"],
-        "expected_files": mdrun["expected_files"],
-    }
+    except HTTPException:
+        # Any preparation or launch failure transitions the session to "failed"
+        _persist_run_status(session, "failed")
+        raise
 
 
 @router.get("/sessions/{session_id}/simulate/status")

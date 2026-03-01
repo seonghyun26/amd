@@ -212,6 +212,8 @@ async def list_sessions_endpoint(username: str = ""):
                     "selected_molecule": data.get("selected_molecule", ""),
                     "updated_at": data.get("updated_at", ""),
                     "run_status": run_status,
+                    "started_at": data.get("started_at"),
+                    "finished_at": data.get("finished_at"),
                 })
             except Exception:
                 continue
@@ -238,7 +240,11 @@ async def get_session_run_status(session_id: str):
                     run_status = inferred
                     data["run_status"] = inferred
                     sf.write_text(json.dumps(data, indent=2))
-            return {"run_status": run_status}
+            return {
+                "run_status": run_status,
+                "started_at": data.get("started_at"),
+                "finished_at": data.get("finished_at"),
+            }
         except Exception:
             continue
     return {"run_status": "standby"}

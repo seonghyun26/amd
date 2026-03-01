@@ -16,6 +16,8 @@ export interface SessionSummary {
   nickname: string;
   selected_molecule?: string;
   run_status?: "standby" | "running" | "finished" | "failed";
+  started_at?: number;
+  finished_at?: number;
 }
 
 interface SessionState {
@@ -103,7 +105,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({
       sessions: state.sessions.map((s) => {
         if (s.session_id !== sessionId) return s;
-        // "failed" is sticky: only a new simulation start ("running") can clear it
+        // "finished" is a terminal state — no further transitions
+        if (s.run_status === "finished") return s;
+        // "failed" can only transition to "running" (new simulation attempt)
         if (s.run_status === "failed" && runStatus !== "running") return s;
         return { ...s, run_status: runStatus };
       }),

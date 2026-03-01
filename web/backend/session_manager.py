@@ -164,6 +164,9 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
     work_dir = Path(session.work_dir)
     sim_meta = session.sim_status or {}
     started_at = float(sim_meta.get("started_at") or 0.0)
+    # Guard: if no simulation has been started in this session, don't inspect old log files.
+    if started_at == 0.0:
+        return None
     output_prefix = str(sim_meta.get("output_prefix") or "simulation/md")
     expected_nsteps_raw = sim_meta.get("expected_nsteps")
     try:
