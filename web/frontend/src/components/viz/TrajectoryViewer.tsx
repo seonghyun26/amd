@@ -100,7 +100,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
   const [exportSettings, setExportSettings] = useState({
     screenshot: { factor: 6, antialias: true,  trim: false, transparent: true  },
-    gif:        { factor: 1, antialias: false, trim: false, transparent: false, maxFrames: 60, frameDelay: 80 },
+    gif:        { factor: 1, antialias: true, trim: false, transparent: true, maxFrames: 60, frameDelay: 80 },
   });
 
   // Close settings panel on outside click

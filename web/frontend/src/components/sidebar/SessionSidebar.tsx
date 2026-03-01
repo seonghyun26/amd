@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2 } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, getSessionRunStatus } from "@/lib/api";
@@ -395,6 +395,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
   const { sessions, sessionId, fetchSessions, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
   const username = getUsername();
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     fetchSessions();
@@ -405,17 +406,47 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
     router.push("/login");
   };
 
+  if (collapsed) {
+    return (
+      <aside className="w-10 flex-shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col h-full overflow-x-hidden transition-all duration-200">
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand sidebar"
+          className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600 hover:text-gray-300 transition-colors"
+        >
+          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow">
+            <FlaskConical size={12} className="text-white" />
+          </div>
+          <ChevronRight size={15} />
+          <span
+            className="text-[10px] font-semibold uppercase tracking-widest text-gray-600"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
+            Sessions
+          </span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="w-56 flex-shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col h-full">
+    <aside className="w-56 flex-shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col h-full transition-all duration-200">
       {/* Brand */}
       <div className="px-4 py-4 border-b border-gray-800 flex items-center gap-2.5 flex-shrink-0">
         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow">
           <FlaskConical size={14} className="text-white" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-white leading-tight">AMD</div>
           <div className="text-[10px] text-gray-500">Ahn MD</div>
         </div>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Collapse sidebar"
+          className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-gray-700 transition-colors flex-shrink-0"
+        >
+          <ChevronLeft size={15} />
+        </button>
       </div>
 
       {/* New session button */}

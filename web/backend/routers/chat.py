@@ -202,8 +202,10 @@ async def list_sessions_endpoint(username: str = ""):
                     session_root = work_dir_resolved.parent
                     inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
                     if inferred in ("finished", "failed"):
+                        import time as _time
                         run_status = inferred
                         data["run_status"] = inferred
+                        data.setdefault("finished_at", _time.time())
                         sf.write_text(json.dumps(data, indent=2))
                 sessions.append({
                     "session_id": data["session_id"],
@@ -238,8 +240,10 @@ async def get_session_run_status(session_id: str):
                 work_dir = Path(data["work_dir"]).resolve()
                 inferred = infer_run_status_from_disk(sf.parent, work_dir)
                 if inferred in ("finished", "failed"):
+                    import time as _time
                     run_status = inferred
                     data["run_status"] = inferred
+                    data.setdefault("finished_at", _time.time())
                     sf.write_text(json.dumps(data, indent=2))
             return {
                 "run_status": run_status,

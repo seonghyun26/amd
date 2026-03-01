@@ -568,11 +568,13 @@ function EnergyCardContent({
   type,
   compact,
   refreshKey = 0,
+  onStats,
 }: {
   sessionId: string;
   type: ResultCardType;
   compact: boolean;
   refreshKey?: number;
+  onStats?: (stats: { last: number; min: number; max: number; mean: number }) => void;
 }) {
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -622,13 +624,25 @@ function EnergyCardContent({
     );
   }
 
+  const yVals = data[dataKey];
+  const lastVal = yVals[yVals.length - 1] ?? 0;
+  let minVal = Infinity, maxVal = -Infinity, sumVal = 0;
+  for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
+  const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
+
+  // Notify parent of stats once computed
+  useEffect(() => {
+    onStats?.({ last: lastVal, min: minVal, max: maxVal, mean: meanVal });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataKey, sessionId]);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axisBase: any = {
     zeroline: false,
-    color: "#4b5563",
-    tickfont: { size: 9, color: "#9ca3af" },
+    color: "#374151",
+    tickfont: { size: compact ? 8 : 9, color: "#6b7280" },
     titlefont: { size: 10, color: cfg.color },
-    gridcolor: "#1a2030",
+    gridcolor: "#111827",
     gridwidth: 1,
     showgrid: true,
   };
@@ -639,24 +653,24 @@ function EnergyCardContent({
         type: "scatter",
         mode: "lines",
         x: xVals,
-        y: data[dataKey],
+        y: yVals,
         name: cfg.label,
         fill: "tozeroy",
         fillcolor: cfg.fillColor,
-        line: { color: cfg.color, width: 2, shape: "spline", smoothing: 0.3 },
+        line: { color: cfg.color, width: compact ? 1.5 : 2, shape: "spline", smoothing: 0.3 },
       }]}
       layout={{
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        xaxis: { ...axisBase, title: "Time (ps)" as any },
+        xaxis: { ...axisBase, title: compact ? undefined : ("Time (ps)" as any), nticks: compact ? 4 : 8 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        yaxis: { ...axisBase, title: cfg.unit as any },
+        yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 4 : 6 },
         showlegend: false,
         hovermode: "x unified",
-        hoverlabel: { bgcolor: "#1f2937", bordercolor: cfg.color, font: { size: 11, color: "#e5e7eb" } },
-        margin: compact ? { t: 4, l: 52, r: 8, b: 44 } : { t: 8, l: 56, r: 20, b: 40 },
+        hoverlabel: { bgcolor: "#111827", bordercolor: cfg.color, font: { size: 11, color: "#e5e7eb" } },
+        margin: compact ? { t: 2, l: 46, r: 4, b: 28 } : { t: 8, l: 56, r: 20, b: 40 },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
-        height: compact ? 185 : 332,
+        height: compact ? 160 : 332,
       }}
       config={{ responsive: true, displayModeBar: false }}
       style={{ width: "100%" }}
@@ -677,32 +691,41 @@ function ResultCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
+  const [stats, setStats] = useState<{ last: number; min: number; max: number; mean: number } | null>(null);
   const termCfg = ENERGY_TERM_CONFIG[card.type];
   const label = termCfg?.label ?? card.type;
   const accentColor = termCfg?.color ?? "#6b7280";
+  const unit = termCfg?.unit ?? "";
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
+    setStats(null);
     setSpinning(true);
     setTimeout(() => setSpinning(false), 800);
+  };
+
+  const fmtVal = (v: number) => {
+    const abs = Math.abs(v);
+    if (abs >= 1e4 || (abs < 0.01 && abs > 0)) return v.toExponential(2);
+    return v.toFixed(abs >= 100 ? 1 : 2);
   };
 
   return (
     <>
       <div
         className="flex-shrink-0 w-56 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ height: "256px", borderColor: `${accentColor}30` }}
+        style={{ height: "272px", borderColor: `${accentColor}30` }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
           style={{ borderColor: `${accentColor}20` }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-xs font-medium text-gray-300">{label}</span>
+            <span className="text-xs font-medium text-gray-300 truncate">{label}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               onClick={handleRefresh}
               title="Refresh"
@@ -726,10 +749,45 @@ function ResultCard({
             </button>
           </div>
         </div>
-        {/* Body */}
+
+        {/* Last value badge */}
+        {stats && (
+          <div
+            className="px-3 pt-2 pb-0.5 flex items-baseline gap-1.5 flex-shrink-0"
+          >
+            <span className="text-lg font-mono font-semibold leading-none tabular-nums" style={{ color: accentColor }}>
+              {fmtVal(stats.last)}
+            </span>
+            <span className="text-[10px] text-gray-500 font-medium">{unit}</span>
+            <span className="ml-auto text-[9px] text-gray-600 font-mono">last</span>
+          </div>
+        )}
+
+        {/* Chart */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <EnergyCardContent sessionId={sessionId} type={card.type} compact refreshKey={refreshKey} />
+          <EnergyCardContent sessionId={sessionId} type={card.type} compact refreshKey={refreshKey} onStats={setStats} />
         </div>
+
+        {/* Stats strip */}
+        {stats && (
+          <div
+            className="flex justify-between px-3 py-1.5 border-t flex-shrink-0"
+            style={{ borderColor: `${accentColor}15` }}
+          >
+            <span className="text-[9px] text-gray-600">
+              <span className="text-gray-500">min </span>
+              <span className="font-mono text-gray-400">{fmtVal(stats.min)}</span>
+            </span>
+            <span className="text-[9px] text-gray-600">
+              <span className="text-gray-500">avg </span>
+              <span className="font-mono text-gray-400">{fmtVal(stats.mean)}</span>
+            </span>
+            <span className="text-[9px] text-gray-600">
+              <span className="text-gray-500">max </span>
+              <span className="font-mono text-gray-400">{fmtVal(stats.max)}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Expanded modal */}
@@ -824,12 +882,24 @@ function AddPlotModal({
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
+  const availableTypes = ENERGY_CARD_TYPES.filter((t) => !existingTypes.has(t));
+  const allSelected = availableTypes.length > 0 && availableTypes.every((t) => checked.has(t));
+  const someSelected = availableTypes.some((t) => checked.has(t));
+
   const toggle = (t: ResultCardType) => {
     setChecked((prev) => {
       const next = new Set(prev);
       next.has(t) ? next.delete(t) : next.add(t);
       return next;
     });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setChecked(new Set());
+    } else {
+      setChecked(new Set(availableTypes));
+    }
   };
 
   const handleRun = () => {
@@ -847,7 +917,20 @@ function AddPlotModal({
         <h3 className="text-sm font-semibold text-gray-200 mb-4">Add Analysis</h3>
 
         {/* Energy group */}
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Energy</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Energy</p>
+          <label className={`flex items-center gap-1.5 cursor-pointer ${availableTypes.length === 0 ? "opacity-30 cursor-not-allowed" : "hover:text-gray-200"}`}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+              disabled={availableTypes.length === 0}
+              onChange={toggleAll}
+              className="accent-blue-500 w-3.5 h-3.5"
+            />
+            <span className="text-[10px] text-gray-500">All</span>
+          </label>
+        </div>
         <div className="space-y-1 mb-4">
           {ENERGY_CARD_TYPES.map((t) => {
             const alreadyAdded = existingTypes.has(t);
