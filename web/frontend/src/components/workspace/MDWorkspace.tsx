@@ -61,6 +61,7 @@ import {
   getProgress,
   stopSimulation,
   getEnergy,
+  getFes,
   updateResultCards,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -122,6 +123,7 @@ interface GmxTemplate { id: string; label: string; description: string }
 const GMX_TEMPLATES: GmxTemplate[] = [
   { id: "vacuum", label: "Vacuum", description: "Dodecahedron vacuum box · no solvent · fast" },
   { id: "auto",   label: "Auto",   description: "Maximally compatible defaults · PME · solvated" },
+  { id: "tip3p",  label: "TIP3P",  description: "Explicit TIP3P water · PME · NPT ensemble" },
 ];
 
 // ── UI primitives ─────────────────────────────────────────────────────
@@ -546,10 +548,11 @@ function DeleteConfirmPopup({
 
 // ── Results section sub-components ────────────────────────────────────
 
-type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure";
+type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure" | "ramachandran";
 interface ResultCardDef { id: string; type: ResultCardType }
 
-const ENERGY_TERM_CONFIG: Record<ResultCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
+type EnergyCardType = Exclude<ResultCardType, "ramachandran">;
+const ENERGY_TERM_CONFIG: Record<EnergyCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
   energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
   energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
   energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: "#a78bfa", fillColor: "rgba(167,139,250,0.10)" },
@@ -557,11 +560,43 @@ const ENERGY_TERM_CONFIG: Record<ResultCardType, { label: string; xvgPrefix: str
   energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: "#34d399", fillColor: "rgba(52,211,153,0.10)"  },
 };
 
-const ENERGY_CARD_TYPES: ResultCardType[] = [
+const ENERGY_CARD_TYPES: EnergyCardType[] = [
   "energy_potential", "energy_kinetic", "energy_total", "energy_temperature", "energy_pressure",
 ];
 
-const VALID_RESULT_CARD_TYPES = new Set<string>(ENERGY_CARD_TYPES);
+const VALID_RESULT_CARD_TYPES = new Set<string>([...ENERGY_CARD_TYPES, "ramachandran"]);
+
+// Module-level FES data cache keyed by sessionId — avoids re-fetching when the card remounts
+const fesDataCache = new Map<string, { x: number[]; y: number[]; z: number[][] }>();
+
+/** Write a 2-column float64 numpy array [time, value] and trigger a browser download. */
+function downloadNpy(times: number[], values: number[], filename: string) {
+  const N = Math.min(times.length, values.length);
+  const floatData = new Float64Array(N * 2);
+  for (let i = 0; i < N; i++) { floatData[i * 2] = times[i]; floatData[i * 2 + 1] = values[i]; }
+  const magic   = new Uint8Array([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59]);
+  const version = new Uint8Array([0x01, 0x00]);
+  const headerDict = `{'descr': '<f8', 'fortran_order': False, 'shape': (${N}, 2), }`;
+  const prefixLen = 10;
+  const minTotal = prefixLen + headerDict.length + 1;
+  const paddedTotal = Math.ceil(minTotal / 64) * 64;
+  const headerLen = paddedTotal - prefixLen;
+  const header = headerDict.padEnd(headerLen - 1, ' ') + '\n';
+  const headerBytes = new TextEncoder().encode(header);
+  const buf = new ArrayBuffer(paddedTotal + floatData.byteLength);
+  const u8  = new Uint8Array(buf);
+  const dv  = new DataView(buf);
+  u8.set(magic, 0); u8.set(version, 6);
+  dv.setUint16(8, headerLen, true);
+  u8.set(headerBytes, 10);
+  u8.set(new Uint8Array(floatData.buffer), paddedTotal);
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
 
 function EnergyCardContent({
   sessionId,
@@ -571,7 +606,7 @@ function EnergyCardContent({
   onStats,
 }: {
   sessionId: string;
-  type: ResultCardType;
+  type: EnergyCardType;
   compact: boolean;
   refreshKey?: number;
   onStats?: (stats: { last: number; min: number; max: number; mean: number }) => void;
@@ -703,7 +738,7 @@ function ResultCard({
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [stats, setStats] = useState<{ last: number; min: number; max: number; mean: number } | null>(null);
-  const termCfg = ENERGY_TERM_CONFIG[card.type];
+  const termCfg = ENERGY_TERM_CONFIG[card.type as EnergyCardType];
   const label = termCfg?.label ?? card.type;
   const accentColor = termCfg?.color ?? "#6b7280";
   const unit = termCfg?.unit ?? "";
@@ -720,6 +755,28 @@ function ResultCard({
     if (abs >= 1e4 || (abs < 0.01 && abs > 0)) return v.toExponential(2);
     return v.toFixed(abs >= 100 ? 1 : 2);
   };
+
+  const handleDownload = async () => {
+    if (!termCfg) return;
+    try {
+      const result = await getEnergy(sessionId);
+      if (!result.available) return;
+      const xVals = result.data.time_ps ?? result.data.step ?? [];
+      const dataKey = Object.keys(result.data).find((k) =>
+        k.toLowerCase().replace(/[-.\s]/g, "").startsWith(termCfg.xvgPrefix.replace(/[-.\s]/g, ""))
+      );
+      if (!dataKey || xVals.length === 0) return;
+      downloadNpy(
+        Array.from(xVals as number[]),
+        Array.from(result.data[dataKey] as number[]),
+        `${termCfg.xvgPrefix}.npy`
+      );
+    } catch { /* silently ignore */ }
+  };
+
+  if (card.type === "ramachandran") {
+    return <RamachandranResultCard sessionId={sessionId} onDelete={onDelete} />;
+  }
 
   return (
     <>
@@ -743,6 +800,13 @@ function ResultCard({
               className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
             >
               <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={handleDownload}
+              title="Download as .npy"
+              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+            >
+              <Download size={11} />
             </button>
             <button
               onClick={() => setExpanded(true)}
@@ -776,7 +840,7 @@ function ResultCard({
 
         {/* Chart */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <EnergyCardContent sessionId={sessionId} type={card.type} compact refreshKey={refreshKey} onStats={setStats} />
+          <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact refreshKey={refreshKey} onStats={setStats} />
         </div>
 
         {/* Stats strip */}
@@ -837,7 +901,7 @@ function ResultCard({
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <EnergyCardContent sessionId={sessionId} type={card.type} compact={false} refreshKey={refreshKey} />
+              <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} />
             </div>
           </div>
         </div>
@@ -876,14 +940,130 @@ function ResultCard({
   );
 }
 
+// ── Ramachandran result card ───────────────────────────────────────────
+
+function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
+  const [data, setData] = useState<{ x: number[]; y: number[]; z: number[][] } | null>(
+    () => fesDataCache.get(sessionId) ?? null
+  );
+  const [loading, setLoading] = useState(!fesDataCache.has(sessionId));
+  const [spinning, setSpinning] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const graphDivRef = useRef<any>(null);
+  const accentColor = "#06b6d4";
+
+  const load = useCallback((force = false) => {
+    if (!force && fesDataCache.has(sessionId)) {
+      setData(fesDataCache.get(sessionId)!);
+      return;
+    }
+    setLoading(true);
+    getFes(sessionId)
+      .then((r) => {
+        if (r.available) { fesDataCache.set(sessionId, r.data); setData(r.data); }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [sessionId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRefresh = () => { setSpinning(true); setTimeout(() => setSpinning(false), 800); load(true); };
+
+  const handleDownload = () => {
+    if (graphDivRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).Plotly?.downloadImage(graphDivRef.current, {
+        format: "png", filename: "ramachandran_fes", height: 600, width: 600,
+      });
+    }
+  };
+
+  return (
+    <>
+      <div
+        className="flex-shrink-0 w-56 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        style={{ height: "272px", borderColor: `${accentColor}30` }}
+      >
+        <div
+          className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
+          style={{ borderColor: `${accentColor}20` }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-xs font-medium text-gray-300 truncate">Ramachandran</span>
+          </div>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
+              <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
+            </button>
+            <button onClick={handleDownload} disabled={!data} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+              <Download size={11} />
+            </button>
+            <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors">
+              <Trash2 size={11} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-xs">Loading FES…</span>
+            </div>
+          ) : !data ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 px-3 text-center">
+              <span className="text-xs text-gray-600">Run <code className="font-mono text-gray-500">analyze_hills</code> to generate</span>
+            </div>
+          ) : (
+            <Plot
+              data={[{
+                type: "heatmap", x: data.x, y: data.y, z: data.z,
+                colorscale: "RdBu", reversescale: true,
+                colorbar: { title: "kJ/mol" as any, titleside: "right", thickness: 8, len: 0.85 },
+              } as Plotly.Data]}
+              layout={{
+                xaxis: { title: { text: "φ (rad)", font: { size: 9 } } as any, zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
+                yaxis: { title: { text: "ψ (rad)", font: { size: 9 } } as any, zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
+                margin: { t: 4, l: 42, r: 46, b: 30 },
+                paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+                height: 220,
+              }}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: "100%" }}
+              onInitialized={(_, graphDiv) => { graphDivRef.current = graphDiv; }}
+              onUpdate={(_, graphDiv) => { graphDivRef.current = graphDiv; }}
+            />
+          )}
+        </div>
+      </div>
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+          <div className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-gray-200 mb-1">Remove plot?</p>
+            <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors">Cancel</button>
+              <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-800/60 bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors">Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function AddPlotModal({
   onSelect,
   onClose,
   existingTypes,
+  systemName,
 }: {
   onSelect: (types: ResultCardType[]) => void;
   onClose: () => void;
   existingTypes: Set<ResultCardType>;
+  systemName: string;
 }) {
   const [checked, setChecked] = useState<Set<ResultCardType>>(new Set());
 
@@ -895,6 +1075,9 @@ function AddPlotModal({
 
   const availableTypes = ENERGY_CARD_TYPES.filter((t) => !existingTypes.has(t));
   const allSelected = availableTypes.length > 0 && availableTypes.every((t) => checked.has(t));
+  const isAla = systemName === "ala_dipeptide";
+  const ramachandranAvailable = isAla && !existingTypes.has("ramachandran");
+  const ramachandranAdded = existingTypes.has("ramachandran");
   const someSelected = availableTypes.some((t) => checked.has(t));
 
   const toggle = (t: ResultCardType) => {
@@ -968,18 +1151,39 @@ function AddPlotModal({
           })}
         </div>
 
-        {/* Locked options */}
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Coming soon</p>
+        {/* Structural group */}
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Structural</p>
         <div className="space-y-1 mb-5">
-          {[
-            { label: "Ramachandran", desc: "φ/ψ backbone dihedral map" },
-            { label: "Custom CV",    desc: "User-defined collective variable" },
-          ].map((opt) => (
-            <div key={opt.label} className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
-              <Lock size={11} className="text-gray-600 flex-shrink-0" />
-              <span className="text-xs text-gray-400">{opt.label}</span>
+          {ramachandranAvailable ? (
+            <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-800 transition-colors">
+              <input
+                type="checkbox"
+                checked={checked.has("ramachandran")}
+                onChange={() => toggle("ramachandran")}
+                className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0"
+              />
+              <span className="text-xs text-gray-300">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-600">φ/ψ map</span>
+            </label>
+          ) : ramachandranAdded ? (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
+              <input type="checkbox" checked readOnly disabled className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0" />
+              <span className="text-xs text-gray-300">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-600">φ/ψ map</span>
+              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
             </div>
-          ))}
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
+              <Lock size={11} className="text-gray-600 flex-shrink-0" />
+              <span className="text-xs text-gray-400">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-500">ala dipeptide only</span>
+            </div>
+          )}
+          <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
+            <Lock size={11} className="text-gray-600 flex-shrink-0" />
+            <span className="text-xs text-gray-400">Custom CV</span>
+            <span className="ml-auto text-[10px] text-gray-500">coming soon</span>
+          </div>
         </div>
 
         <button
@@ -1149,6 +1353,7 @@ function ProgressTab({
   runFinishedAt,
   resultCards,
   setResultCards,
+  systemName,
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed";
@@ -1158,6 +1363,7 @@ function ProgressTab({
   runFinishedAt?: number | null;
   resultCards: ResultCardDef[];
   setResultCards: React.Dispatch<React.SetStateAction<ResultCardDef[]>>;
+  systemName: string;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const [simFiles, setSimFiles] = useState<string[]>([]);
@@ -1413,7 +1619,7 @@ function ProgressTab({
           sessionId={sessionId}
           topologyPath={runStatus === "finished" ? (topologyFile?.path ?? null) : null}
           trajectoryPath={runStatus === "finished" ? (trajectoryFile?.path ?? null) : null}
-          isLoading={runStatus !== "finished" || filesLoading || filesLoadedFor !== sessionId}
+          isLoading={runStatus === "finished" && (filesLoading || filesLoadedFor !== sessionId)}
         />
       </Section>
 
@@ -1441,7 +1647,7 @@ function ProgressTab({
           <button
             onClick={() => setAddPlotOpen(true)}
             className="flex-shrink-0 w-56 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
-            style={{ height: "256px" }}
+            style={{ height: "272px" }}
           >
             <Plus size={20} />
             <span className="text-xs">Add plot</span>
@@ -1459,6 +1665,7 @@ function ProgressTab({
           }}
           onClose={() => setAddPlotOpen(false)}
           existingTypes={new Set(resultCards.map((c) => c.type))}
+          systemName={systemName}
         />
       )}
 
@@ -2949,6 +3156,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         runFinishedAt={simFinishedAt}
         resultCards={resultCards}
         setResultCards={setResultCards}
+        systemName={(cfg.system as Record<string, unknown>)?.name as string ?? ""}
       />
     ),
     molecule: (

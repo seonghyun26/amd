@@ -99,6 +99,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
         "auto":    "default",
         "default": "default",
         "vacuum":  "vacuum",
+        "tip3p":   "tip3p",
     }
     gromacs_raw = (req.gromacs or cfg_defaults["gromacs"] or "").strip()
     gromacs = _HYDRA_GROMACS_MAP.get(gromacs_raw.lower(), gromacs_raw)
@@ -109,6 +110,9 @@ async def create_session_endpoint(req: CreateSessionRequest):
     extra_overrides = list(req.extra_overrides)
     if gromacs in _VACUUM_CONFIGS:
         extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + ["system.water_model=none"]
+    elif gromacs == "tip3p":
+        # Explicit TIP3P solvation — override any system default (e.g. ala_dipeptide has water_model: none)
+        extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + ["system.water_model=tip3p"]
 
     # hydra_system must be a valid conf/system/*.yaml name
     _HYDRA_SYSTEM_MAP: dict[str, str] = {

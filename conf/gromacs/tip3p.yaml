@@ -1,0 +1,56 @@
+# GROMACS MDP parameters — explicit TIP3P water, PME electrostatics
+# Identical to default.yaml but forces TIP3P solvation via water_model override.
+
+integrator: md
+dt: 0.002               # ps (2 fs timestep)
+temperature: 300        # K
+pressure: 1.0           # bar
+nsteps: 50000000        # overridden by method.nsteps at runtime
+
+# Thermostat
+tcoupl: V-rescale
+tc_grps:
+  - Protein
+  - Non-Protein
+tau_t:
+  - 0.1
+  - 0.1
+ref_t:
+  - ${gromacs.temperature}
+  - ${gromacs.temperature}
+
+# Barostat
+pcoupl: Parrinello-Rahman
+pcoupltype: isotropic
+tau_p: 2.0
+ref_p: ${gromacs.pressure}
+compressibility: 4.5e-5
+
+# Box setup (used by editconf before solvation/vacuum runs; not an MDP key)
+box_clearance: 1.5      # nm — minimum distance between molecule and box edge
+
+# Neighbor searching
+cutoff_scheme: Verlet
+nstlist: 10
+rlist: 1.0              # nm
+rcoulomb: 1.0           # nm
+rvdw: 1.0               # nm
+
+# Electrostatics
+coulombtype: PME
+pme_order: 4
+fourierspacing: 0.16    # nm
+
+# Constraints
+constraints: h-bonds
+constraint_algorithm: LINCS
+lincs_iter: 1
+lincs_order: 4
+
+# Output frequencies (steps)
+nstxout: 5000
+nstvout: 5000
+nstfout: 0
+nstlog: 1000
+nstxout_compressed: 10
+nstenergy: 1000         # keep aligned with wandb.log_interval_steps
