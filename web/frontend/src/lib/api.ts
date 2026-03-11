@@ -210,6 +210,14 @@ export async function getColvar(
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/colvar?filename=${filename}`));
 }
 
+export async function getRamachandranData(
+  sessionId: string,
+  force = false,
+): Promise<{ data: { phi: number[]; psi: number[] }; available: boolean }> {
+  const qs = force ? "?force=true" : "";
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/ramachandran${qs}`));
+}
+
 export async function getFes(
   sessionId: string,
   filename = "fes.dat"

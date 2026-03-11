@@ -61,7 +61,7 @@ import {
   getProgress,
   stopSimulation,
   getEnergy,
-  getFes,
+  getRamachandranData,
   updateResultCards,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -567,7 +567,7 @@ const ENERGY_CARD_TYPES: EnergyCardType[] = [
 const VALID_RESULT_CARD_TYPES = new Set<string>([...ENERGY_CARD_TYPES, "ramachandran"]);
 
 // Module-level FES data cache keyed by sessionId — avoids re-fetching when the card remounts
-const fesDataCache = new Map<string, { x: number[]; y: number[]; z: number[][] }>();
+const ramaDataCache = new Map<string, { phi: number[]; psi: number[] }>();
 
 /** Write a 2-column float64 numpy array [time, value] and trigger a browser download. */
 function downloadNpy(times: number[], values: number[], filename: string) {
@@ -943,10 +943,10 @@ function ResultCard({
 // ── Ramachandran result card ───────────────────────────────────────────
 
 function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
-  const [data, setData] = useState<{ x: number[]; y: number[]; z: number[][] } | null>(
-    () => fesDataCache.get(sessionId) ?? null
+  const [data, setData] = useState<{ phi: number[]; psi: number[] } | null>(
+    () => ramaDataCache.get(sessionId) ?? null
   );
-  const [loading, setLoading] = useState(!fesDataCache.has(sessionId));
+  const [loading, setLoading] = useState(!ramaDataCache.has(sessionId));
   const [spinning, setSpinning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -954,14 +954,14 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   const accentColor = "#06b6d4";
 
   const load = useCallback((force = false) => {
-    if (!force && fesDataCache.has(sessionId)) {
-      setData(fesDataCache.get(sessionId)!);
+    if (!force && ramaDataCache.has(sessionId)) {
+      setData(ramaDataCache.get(sessionId)!);
       return;
     }
     setLoading(true);
-    getFes(sessionId)
+    getRamachandranData(sessionId, force)
       .then((r) => {
-        if (r.available) { fesDataCache.set(sessionId, r.data); setData(r.data); }
+        if (r.available) { ramaDataCache.set(sessionId, r.data); setData(r.data); }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -975,10 +975,12 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
     if (graphDivRef.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).Plotly?.downloadImage(graphDivRef.current, {
-        format: "png", filename: "ramachandran_fes", height: 600, width: 600,
+        format: "png", filename: "ramachandran", height: 600, width: 600,
       });
     }
   };
+
+  const PI = Math.PI;
 
   return (
     <>
@@ -1010,23 +1012,28 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           {loading ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
               <Loader2 size={16} className="animate-spin" />
-              <span className="text-xs">Loading FES…</span>
+              <span className="text-xs">Computing angles…</span>
             </div>
           ) : !data ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 px-3 text-center">
-              <span className="text-xs text-gray-600">Run <code className="font-mono text-gray-500">analyze_hills</code> to generate</span>
+              <span className="text-xs text-gray-600">No trajectory data yet</span>
             </div>
           ) : (
             <Plot
               data={[{
-                type: "heatmap", x: data.x, y: data.y, z: data.z,
-                colorscale: "RdBu", reversescale: true,
-                colorbar: { title: "kJ/mol" as any, titleside: "right", thickness: 8, len: 0.85 },
+                type: "histogram2dcontour",
+                x: data.phi,
+                y: data.psi,
+                colorscale: "Blues",
+                reversescale: true,
+                showscale: false,
+                ncontours: 20,
+                contours: { coloring: "fill" },
               } as Plotly.Data]}
               layout={{
-                xaxis: { title: { text: "φ (rad)", font: { size: 9 } } as any, zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
-                yaxis: { title: { text: "ψ (rad)", font: { size: 9 } } as any, zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
-                margin: { t: 4, l: 42, r: 46, b: 30 },
+                xaxis: { title: { text: "φ (rad)", font: { size: 9 } } as any, range: [-PI, PI], zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
+                yaxis: { title: { text: "ψ (rad)", font: { size: 9 } } as any, range: [-PI, PI], zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
+                margin: { t: 4, l: 42, r: 10, b: 30 },
                 paper_bgcolor: "transparent", plot_bgcolor: "transparent",
                 height: 220,
               }}

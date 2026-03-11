@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from web.backend.analysis_utils import (
     colvar_to_columns,
+    extract_ramachandran,
     fes_dat_to_heatmap,
     get_log_progress,
     run_gmx_energy,
@@ -58,6 +59,14 @@ async def get_energy(
     except AttributeError:
         return {"data": {}, "available": False}
     data = run_gmx_energy(session.work_dir, gmx, force=force)
+    return {"data": data, "available": bool(data)}
+
+
+@router.get("/sessions/{session_id}/analysis/ramachandran")
+async def get_ramachandran(session_id: str, force: bool = Query(default=False)):
+    """Extract phi/psi angles from trajectory → {phi, psi} arrays for scatter plot."""
+    session = _require_session(session_id)
+    data = extract_ramachandran(session.work_dir, force=force)
     return {"data": data, "available": bool(data)}
 
 

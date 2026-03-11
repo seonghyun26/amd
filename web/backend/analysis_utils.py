@@ -216,6 +216,83 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
 
 
 
+def extract_ramachandran(work_dir: str, force: bool = False) -> dict[str, Any]:
+    """Extract phi/psi dihedral angles for a Ramachandran plot.
+
+    Strategy (fastest first):
+    1. COLVAR file — if it has phi/psi columns, return them directly.
+    2. mdtraj — compute from simulation/md.xtc + topology (.tpr or .gro).
+    3. Cache result to analysis/ramachandran.json.
+
+    Returns {"phi": [...], "psi": [...]} in radians, or {} on failure.
+    """
+    import json as _json
+
+    wd = Path(work_dir)
+    cache_path = wd / "analysis" / "ramachandran.json"
+
+    if not force and cache_path.exists() and cache_path.stat().st_size > 0:
+        try:
+            return _json.loads(cache_path.read_text())
+        except Exception:
+            pass
+
+    # ── Strategy 1: COLVAR ────────────────────────────────────────────
+    colvar_path = wd / "COLVAR"
+    if colvar_path.exists():
+        cols = colvar_to_columns(str(colvar_path))
+        phi_key = next((k for k in cols if "phi" in k.lower()), None)
+        psi_key = next((k for k in cols if "psi" in k.lower()), None)
+        if phi_key and psi_key:
+            result = {"phi": cols[phi_key], "psi": cols[psi_key]}
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(_json.dumps(result))
+            return result
+
+    # ── Strategy 2: mdtraj ────────────────────────────────────────────
+    xtc_path = wd / "simulation" / "md.xtc"
+    if not xtc_path.exists():
+        return {}
+
+    # Find topology: prefer .tpr, then *_system.gro, then any .gro in work_dir
+    top_path: Path | None = None
+    tpr = wd / "md.tpr"
+    if tpr.exists():
+        top_path = tpr
+    else:
+        gro_candidates = list(wd.glob("*_system.gro")) + list(wd.glob("*.gro"))
+        if gro_candidates:
+            top_path = gro_candidates[0]
+
+    if top_path is None:
+        return {}
+
+    try:
+        import mdtraj
+        traj = mdtraj.load(str(xtc_path), top=str(top_path))
+
+        _, phi_vals = mdtraj.compute_phi(traj)   # (n_frames, n_phi)
+        _, psi_vals = mdtraj.compute_psi(traj)   # (n_frames, n_psi)
+
+        if phi_vals.shape[1] == 0 or psi_vals.shape[1] == 0:
+            return {}
+
+        # Use the first (or only) phi/psi pair; downsample to ≤5000 frames
+        phi = phi_vals[:, 0].tolist()
+        psi = psi_vals[:, 0].tolist()
+        if len(phi) > 5000:
+            step = len(phi) // 5000
+            phi = phi[::step]
+            psi = psi[::step]
+
+        result = {"phi": phi, "psi": psi}
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(_json.dumps(result))
+        return result
+    except Exception:
+        return {}
+
+
 def get_log_progress(log_path: str) -> dict[str, Any]:
     """Return latest step/time/ns_per_day from GROMACS log."""
     info = parse_gromacs_log_progress(log_path)
