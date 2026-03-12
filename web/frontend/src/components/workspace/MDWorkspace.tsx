@@ -62,6 +62,7 @@ import {
   stopSimulation,
   getEnergy,
   getRamachandranImageUrl,
+  type RamachandranPlotSettings,
   updateResultCards,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -780,7 +781,7 @@ function ResultCard({
     <>
       <div
         className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ width: "360px", height: "448px", borderColor: `${accentColor}30` }}
+        style={{ width: "576px", height: "717px", borderColor: `${accentColor}30` }}
       >
         {/* Header */}
         <div
@@ -1036,6 +1037,16 @@ function RamachandranExpandedModal({
 
 // ── Ramachandran result card ───────────────────────────────────────────
 
+const RAMACHANDRAN_CMAPS = ["Blues", "viridis", "plasma", "inferno", "magma", "cividis", "YlGnBu", "PuBu", "BuPu", "GnBu", "coolwarm", "Spectral"] as const;
+
+const RAMACHANDRAN_DEFAULTS: Required<RamachandranPlotSettings> = {
+  dpi: 120,
+  bins: 60,
+  cmap: "Blues",
+  log_scale: true,
+  show_start: true,
+};
+
 function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
@@ -1043,13 +1054,29 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   const [spinning, setSpinning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const [plotSettings, setPlotSettings] = useState<Required<RamachandranPlotSettings>>({ ...RAMACHANDRAN_DEFAULTS });
   const accentColor = "#06b6d4";
 
-  const load = (force: boolean) => {
+  // Close settings on outside click
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [settingsOpen]);
+
+  const load = (force: boolean, settings?: RamachandranPlotSettings) => {
     setStatus("loading");
     setError(null);
+    const opts = settings ?? plotSettings;
     const cacheBust = force ? Date.now() : 0;
-    const fetchUrl = getRamachandranImageUrl(sessionId, force, cacheBust);
+    const fetchUrl = getRamachandranImageUrl(sessionId, force, cacheBust, opts);
     fetch(fetchUrl)
       .then(async (res) => {
         if (res.ok) {
@@ -1079,16 +1106,22 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 
   const handleDownload = () => {
     const a = document.createElement("a");
-    a.href = getRamachandranImageUrl(sessionId);
+    a.href = getRamachandranImageUrl(sessionId, false, 0, plotSettings);
     a.download = "ramachandran.png";
     a.click();
+  };
+
+  const updateSetting = <K extends keyof RamachandranPlotSettings>(key: K, value: Required<RamachandranPlotSettings>[K]) => {
+    const next = { ...plotSettings, [key]: value };
+    setPlotSettings(next);
+    load(true, next);
   };
 
   return (
     <>
       <div
         className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ width: "360px", height: "448px", borderColor: `${accentColor}30` }}
+        style={{ width: "576px", height: "717px", borderColor: `${accentColor}30` }}
       >
         <div
           className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
@@ -1108,6 +1141,89 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
             <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
               <Search size={11} />
             </button>
+            {/* Settings gear */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                onClick={() => setSettingsOpen((v) => !v)}
+                title="Plot settings"
+                className={`p-1 rounded transition-colors ${
+                  settingsOpen
+                    ? "text-cyan-400 bg-cyan-900/30"
+                    : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/60"
+                }`}
+              >
+                <Settings size={11} />
+              </button>
+
+              {settingsOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
+                    <span className="font-semibold text-gray-200">Plot Settings</span>
+                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="p-3 space-y-3">
+                    {/* DPI */}
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">DPI</span>
+                      <input
+                        type="range" min={72} max={300} step={12}
+                        value={plotSettings.dpi}
+                        onChange={(e) => updateSetting("dpi", Number(e.target.value))}
+                        className="flex-1 accent-cyan-500 h-1"
+                      />
+                      <span className="w-8 text-right text-gray-300 tabular-nums">{plotSettings.dpi}</span>
+                    </div>
+                    {/* Bins */}
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">Bins</span>
+                      <input
+                        type="range" min={20} max={150} step={10}
+                        value={plotSettings.bins}
+                        onChange={(e) => updateSetting("bins", Number(e.target.value))}
+                        className="flex-1 accent-cyan-500 h-1"
+                      />
+                      <span className="w-8 text-right text-gray-300 tabular-nums">{plotSettings.bins}</span>
+                    </div>
+                    {/* Colormap */}
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">Colormap</span>
+                      <select
+                        value={plotSettings.cmap}
+                        onChange={(e) => updateSetting("cmap", e.target.value)}
+                        className="flex-1 bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-cyan-600"
+                      >
+                        {RAMACHANDRAN_CMAPS.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="border-t border-gray-800" />
+                    {/* Log scale toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Log scale</span>
+                      <button
+                        onClick={() => updateSetting("log_scale", !plotSettings.log_scale)}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-700"}`}
+                      >
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.log_scale ? "left-[18px]" : "left-0.5"}`} />
+                      </button>
+                    </div>
+                    {/* Show start toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Show start</span>
+                      <button
+                        onClick={() => updateSetting("show_start", !plotSettings.show_start)}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}
+                      >
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.show_start ? "left-[18px]" : "left-0.5"}`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors">
               <Trash2 size={11} />
             </button>
@@ -1778,7 +1894,7 @@ function ProgressTab({
           <button
             onClick={() => setAddPlotOpen(true)}
             className="flex-shrink-0 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
-            style={{ width: "360px", height: "448px" }}
+            style={{ width: "576px", height: "717px" }}
           >
             <Plus size={20} />
             <span className="text-xs">Add plot</span>

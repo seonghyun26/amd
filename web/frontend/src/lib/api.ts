@@ -218,10 +218,30 @@ export async function getRamachandranData(
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/ramachandran${qs}`));
 }
 
-export function getRamachandranImageUrl(sessionId: string, force = false, cacheBust = 0): string {
+export interface RamachandranPlotSettings {
+  dpi?: number;
+  bins?: number;
+  cmap?: string;
+  log_scale?: boolean;
+  show_start?: boolean;
+}
+
+export function getRamachandranImageUrl(
+  sessionId: string,
+  force = false,
+  cacheBust = 0,
+  settings?: RamachandranPlotSettings,
+): string {
   const params = new URLSearchParams();
   if (force) params.set("force", "true");
   if (cacheBust) params.set("_t", String(cacheBust));
+  if (settings) {
+    if (settings.dpi !== undefined) params.set("dpi", String(settings.dpi));
+    if (settings.bins !== undefined) params.set("bins", String(settings.bins));
+    if (settings.cmap !== undefined) params.set("cmap", settings.cmap);
+    if (settings.log_scale !== undefined) params.set("log_scale", String(settings.log_scale));
+    if (settings.show_start !== undefined) params.set("show_start", String(settings.show_start));
+  }
   const qs = params.size ? `?${params}` : "";
   return `${BASE}/sessions/${sessionId}/analysis/ramachandran.png${qs}`;
 }

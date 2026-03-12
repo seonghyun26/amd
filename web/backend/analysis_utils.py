@@ -220,7 +220,16 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
 
 
 
-def generate_ramachandran_png(work_dir: str, force: bool = False) -> tuple[str | None, str | None]:
+def generate_ramachandran_png(
+    work_dir: str,
+    force: bool = False,
+    *,
+    dpi: int = 120,
+    bins: int = 60,
+    cmap: str = "Blues",
+    log_scale: bool = True,
+    show_start: bool = True,
+) -> tuple[str | None, str | None]:
     """Generate a Ramachandran plot PNG.
 
     Pipeline:
@@ -369,18 +378,16 @@ def generate_ramachandran_png(work_dir: str, force: bool = False) -> tuple[str |
 
         fig, ax = plt.subplots(figsize=(4.5, 4.5), facecolor="#111827")
         ax.set_facecolor("#111827")
-        bins = 60
         h, xe, ye = np.histogram2d(phi_plot, psi_plot, bins=bins,
                                    range=[[-np.pi, np.pi], [-np.pi, np.pi]])
         xc = (xe[:-1] + xe[1:]) / 2
         yc = (ye[:-1] + ye[1:]) / 2
-        # Log-scale density to reveal low-population regions
-        h_log = np.where(h > 0, np.log10(h), np.nan)
-        ax.contourf(xc, yc, h_log.T, levels=20, cmap="Blues")
-        # Mark start state with a white star with black outline
-        ax.plot(phi_arr[0], psi_arr[0], marker="*", markersize=14,
-                color="white", alpha=0.8, markeredgecolor="black",
-                markeredgewidth=0.8, zorder=10)
+        plot_data = np.where(h > 0, np.log10(h), np.nan) if log_scale else h
+        ax.contourf(xc, yc, plot_data.T, levels=20, cmap=cmap)
+        if show_start:
+            ax.plot(phi_arr[0], psi_arr[0], marker="*", markersize=14,
+                    color="white", alpha=0.8, markeredgecolor="black",
+                    markeredgewidth=0.8, zorder=10)
         ax.set_xlabel("φ (rad)", color="#9ca3af", fontsize=12)
         ax.set_ylabel("ψ (rad)", color="#9ca3af", fontsize=12)
         ax.set_xlim(-np.pi, np.pi)
@@ -390,7 +397,7 @@ def generate_ramachandran_png(work_dir: str, force: bool = False) -> tuple[str |
             spine.set_edgecolor("#374151")
         plt.tight_layout(pad=0.4)
         analysis_dir.mkdir(parents=True, exist_ok=True)
-        plt.savefig(str(png_path), dpi=120, bbox_inches="tight",
+        plt.savefig(str(png_path), dpi=dpi, bbox_inches="tight",
                     facecolor=fig.get_facecolor())
         plt.close(fig)
         log.info("ramachandran: PNG saved to %s", png_path)

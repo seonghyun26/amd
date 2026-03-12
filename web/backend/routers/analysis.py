@@ -113,10 +113,19 @@ async def get_ramachandran(session_id: str, force: bool = Query(default=False)):
 
 
 @router.get("/sessions/{session_id}/analysis/ramachandran.png")
-async def get_ramachandran_image(session_id: str, force: bool = Query(default=False)):
+async def get_ramachandran_image(
+    session_id: str,
+    force: bool = Query(default=False),
+    dpi: int = Query(default=120, ge=72, le=300),
+    bins: int = Query(default=60, ge=20, le=150),
+    cmap: str = Query(default="Blues"),
+    log_scale: bool = Query(default=True),
+    show_start: bool = Query(default=True),
+):
     """Generate (or serve cached) Ramachandran plot PNG."""
     session = _require_session(session_id)
-    png_path, error = generate_ramachandran_png(session.work_dir, force=force)
+    plot_opts = dict(dpi=dpi, bins=bins, cmap=cmap, log_scale=log_scale, show_start=show_start)
+    png_path, error = generate_ramachandran_png(session.work_dir, force=force, **plot_opts)
     if error:
         raise HTTPException(422, error)
     if not png_path or not Path(png_path).exists():
