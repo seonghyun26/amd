@@ -48,7 +48,7 @@ export default function App() {
   const activeSessionId = showNewSession ? null : sessionId;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       {/* Left: Session sidebar */}
       <SessionSidebar
         onNewSession={handleNewSession}
@@ -71,21 +71,21 @@ export default function App() {
 
       {/* Right: Chat panel */}
       <aside
-        className={`flex-shrink-0 border-l border-gray-800 flex flex-col bg-gray-900 overflow-x-hidden transition-all duration-200 ${
+        className={`flex-shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-900 overflow-x-hidden transition-all duration-200 ${
           rightPanelOpen ? "w-96" : "w-10"
         }`}
       >
         {rightPanelOpen ? (
           <>
-            <div className="px-4 py-3.5 border-b border-gray-800 flex-shrink-0 flex items-center justify-between">
+            <div className="px-4 py-3.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-gray-200">AI Assistant</h2>
+                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">AI Assistant</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Claude Opus 4.6</p>
               </div>
               <button
                 onClick={() => setRightPanelOpen(false)}
                 title="Collapse panel"
-                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-gray-700 transition-colors flex-shrink-0"
+                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
               >
                 <ChevronRight size={15} />
               </button>
@@ -100,7 +100,7 @@ export default function App() {
                   onAutoSendComplete={() => setAutoSend("")}
                 />
               ) : (
-                <div className="p-3 border-t border-gray-800 text-xs text-gray-500 text-center">
+                <div className="p-3 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500 text-center">
                   Create a session to start chatting
                 </div>
               )}

@@ -14,11 +14,13 @@ function Field({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string | number;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -27,7 +29,8 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        placeholder={placeholder}
+        className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
       />
     </div>
   );
@@ -43,7 +46,6 @@ export default function ConfigBuilder({ sessionId }: Props) {
 
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
   const method = (cfg.method ?? {}) as Record<string, unknown>;
-  const plumed = (cfg.plumed ?? {}) as Record<string, unknown>;
 
   const handleSave = async () => {
     await updateSessionConfig(sessionId, cfg).catch(() => {});
@@ -59,10 +61,10 @@ export default function ConfigBuilder({ sessionId }: Props) {
   return (
     <div className="p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Configuration</h3>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Configuration</h3>
         <button
           onClick={handleSave}
-          className="flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
         >
           {saved ? <CheckCircle2 size={12} /> : null}
           {saved ? "Saved" : "Save"}
@@ -75,7 +77,7 @@ export default function ConfigBuilder({ sessionId }: Props) {
             <Tabs.Trigger
               key={tab}
               value={tab}
-              className="flex-1 text-xs py-1 rounded-md capitalize data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm transition-all"
+              className="flex-1 text-xs py-1 rounded-md capitalize text-gray-500 dark:text-gray-400 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm transition-all"
             >
               {tab}
             </Tabs.Trigger>
@@ -133,6 +135,13 @@ export default function ConfigBuilder({ sessionId }: Props) {
             type="number"
             value={String(gromacs.rvdw ?? "1.0")}
             onChange={(v) => setGromacs("rvdw", Number(v))}
+          />
+          <Field
+            label="Random Seed"
+            type="number"
+            value={String(gromacs.gen_seed ?? "-1")}
+            onChange={(v) => setGromacs("gen_seed", Number(v))}
+            placeholder="-1 for random"
           />
         </Tabs.Content>
 

@@ -63,6 +63,7 @@ import {
   stopSimulation,
   terminateSimulation,
   resumeSimulation,
+  checkCheckpoint,
   getEnergy,
   getRamachandranImageUrl,
   type RamachandranPlotSettings,
@@ -3760,6 +3761,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
   const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
+  const [hasCheckpoint, setHasCheckpoint] = useState(true);
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [resultCards, setResultCards] = useState<ResultCardDef[]>([]);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -3784,6 +3786,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimStartedAt(stored?.started_at ? stored.started_at * 1000 : null);
     setSimFinishedAt(stored?.finished_at ? stored.finished_at * 1000 : null);
     setPauseConfirmOpen(false);
+    setHasCheckpoint(true); // reset, will be checked below if paused
     setGromacsSaveState("idle");
     // Restore result cards from persisted session data, or use defaults
     const savedCards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
@@ -3798,6 +3801,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         if (rs.finished_at) setSimFinishedAt((prev) => prev ?? rs.finished_at! * 1000);
         if (rs.run_status === "running" || rs.run_status === "finished" || rs.run_status === "failed" || rs.run_status === "paused") {
           setSimRunStatus((prev) => prev === "standby" ? rs.run_status as typeof prev : prev);
+        }
+        // Check checkpoint availability when session is paused
+        if (rs.run_status === "paused" || preserved === "paused") {
+          checkCheckpoint(sessionId).then((r) => setHasCheckpoint(r.has_checkpoint)).catch(() => {});
         }
       }).catch(() => {});
     }
@@ -4001,7 +4008,11 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimRunStatus("paused");
     setSimState("standby");
     try {
-      await stopSimulation(sessionId);
+      const result = await stopSimulation(sessionId);
+      setHasCheckpoint(result.has_checkpoint);
+      if (!result.has_checkpoint) {
+        appendSSEEvent({ type: "text_delta", text: "Warning: No checkpoint was saved. The simulation ran too briefly. You will need to restart instead of resuming.\n" });
+      }
     } catch { /* ignore */ }
   };
 
@@ -4010,12 +4021,21 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     try {
       setSimState("running");
       setSimRunStatus("running");
-      await resumeSimulation(sessionId);
+      const result = await resumeSimulation(sessionId);
+      if (result.status === "no_checkpoint" || !result.resumed) {
+        // No checkpoint — backend already reset to standby
+        appendSSEEvent({ type: "text_delta", text: (result.message ?? "No checkpoint found.") + "\n" });
+        setSimState("standby");
+        setSimRunStatus("standby");
+        setHasCheckpoint(false);
+        return;
+      }
       appendSSEEvent({ type: "text_delta", text: "Simulation resumed from checkpoint.\n" });
     } catch (err) {
       appendSSEEvent({ type: "error", message: `Failed to resume: ${err}` });
       setSimState("standby");
-      setSimRunStatus("failed");
+      setSimRunStatus("standby");
+      setHasCheckpoint(false);
     }
   };
 
@@ -4159,46 +4179,12 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     <div className="flex-1 flex flex-col bg-gray-950 h-full min-w-0">
       <PillTabs active={activeTab} onChange={setActiveTab} />
 
-      <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+      <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading ? "flex flex-col" : ""}`}>
         {sessionLoading ? (
-          <div className="p-4 space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Loader2 size={14} className="animate-spin text-gray-500" />
-              <span className="text-sm text-gray-500">Loading session…</span>
-            </div>
-            <div className="animate-pulse space-y-4">
-              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
-                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
-                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
-                  <div className="h-3 w-24 bg-gray-800 rounded" />
-                </div>
-                <div className="p-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="h-14 bg-gray-800/40 rounded-lg" />
-                    <div className="h-14 bg-gray-800/40 rounded-lg" />
-                    <div className="h-14 bg-gray-800/40 rounded-lg" />
-                  </div>
-                  <div className="h-2.5 w-full bg-gray-800/30 rounded-full mt-3" />
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
-                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
-                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
-                  <div className="h-3 w-20 bg-gray-800 rounded" />
-                </div>
-                <div className="p-3">
-                  <div className="h-28 bg-gray-800/30 rounded-lg" />
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
-                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
-                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
-                  <div className="h-3 w-16 bg-gray-800 rounded" />
-                </div>
-                <div className="p-3">
-                  <div className="h-20 bg-gray-800/30 rounded-lg" />
-                </div>
-              </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 size={24} className="animate-spin text-gray-400" />
+              <span className="text-sm text-gray-500">Loading session\u2026</span>
             </div>
           </div>
         ) : renderTab()}
@@ -4234,21 +4220,36 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           </button>
         )}
         {actionState === "paused" && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleResume}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/30 text-sm"
-            >
-              <Play size={14} fill="currentColor" />
-              Resume
-            </button>
-            <button
-              onClick={handleTerminate}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-800 hover:bg-gray-700 text-red-400 hover:text-red-300 font-semibold rounded-xl transition-all border border-gray-700 text-sm"
-            >
-              <Square size={14} fill="currentColor" />
-              Stop
-            </button>
+          <div className="flex flex-col gap-2">
+            {!hasCheckpoint && (
+              <p className="text-xs text-amber-400 text-center">No checkpoint found — simulation ran too briefly. Restart required.</p>
+            )}
+            <div className="flex gap-2">
+              {hasCheckpoint ? (
+                <button
+                  onClick={handleResume}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+                >
+                  <Play size={14} fill="currentColor" />
+                  Resume
+                </button>
+              ) : (
+                <button
+                  onClick={() => { handleTerminate(); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+                >
+                  <RotateCcw size={14} />
+                  Restart
+                </button>
+              )}
+              <button
+                onClick={handleTerminate}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-900/30 text-sm"
+              >
+                <Square size={14} fill="currentColor" />
+                Stop
+              </button>
+            </div>
           </div>
         )}
       </div>

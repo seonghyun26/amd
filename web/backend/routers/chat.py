@@ -198,7 +198,7 @@ async def list_sessions_endpoint(username: str = ""):
                 data = json.loads(sf.read_text())
                 if "session_id" not in data or "work_dir" not in data:
                     continue
-                if data.get("status") == "inactive":
+                if data.get("status") in ("inactive", "deleted"):
                     continue
                 run_status = data.get("run_status", "standby")
                 # If session.json says "running", infer actual status from md.log (e.g. after refresh)
@@ -351,29 +351,49 @@ async def restore_session_endpoint(session_id: str, req: RestoreRequest):
 
 @router.delete("/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
+    import shutil
+    from datetime import datetime
+
     # Stop any running simulation before removing the session
     stopped = stop_session_simulation(session_id)
 
-    # Scan disk directly by session_id and mark session.json as deleted in-place.
-    # This avoids relying on the in-memory session (which may not exist if the
-    # user deletes a session they never clicked on in the current browser tab).
-    from datetime import datetime
+    moved_to: str | None = None
+
+    # Scan disk directly by session_id and move the session folder to trash.
     for sf in Path("outputs").glob("*/*/session.json"):
         try:
             data = json.loads(sf.read_text())
             if data.get("session_id") != session_id:
                 continue
+
+            # Mark as deleted in session.json before moving
             data.update({
-                "status": "inactive",
+                "status": "deleted",
                 "updated_at": datetime.utcnow().isoformat(),
             })
             sf.write_text(json.dumps(data, indent=2))
+
+            # session folder is the parent of session.json
+            session_folder = sf.parent
+            # user folder is the parent of the session folder (outputs/{user}/{session}/)
+            user_folder = session_folder.parent
+
+            trash_dir = user_folder / "trash"
+            trash_dir.mkdir(parents=True, exist_ok=True)
+
+            dest = trash_dir / session_folder.name
+            # If a folder with the same name already exists in trash, append session_id
+            if dest.exists():
+                dest = trash_dir / f"{session_folder.name}_{session_id[:8]}"
+
+            shutil.move(str(session_folder), str(dest))
+            moved_to = str(dest)
             break
         except Exception:
             continue
 
     delete_session(session_id)
-    return {"deleted": session_id, "simulation_stopped": stopped}
+    return {"deleted": session_id, "simulation_stopped": stopped, "moved_to": moved_to}
 
 
 # ── Streaming chat ─────────────────────────────────────────────────────

@@ -56,6 +56,16 @@ with deep knowledge of GROMACS and PLUMED.
 - Validate plumed.dat with `plumed driver --noatoms` before long runs
 - sigma units: nm for distance CVs, radians for torsion CVs
 
+## Resume / Extend Workflow
+1. To resume a stopped simulation from checkpoint:
+   - The MDP must have gen-vel = no and continuation = yes (use extra_params in generate_mdp_from_config)
+   - Call run_mdrun with cpt_file pointing to the .cpt file (append is automatic)
+   - The original .tpr file is reused as-is
+2. To extend a simulation beyond its original nsteps:
+   - Use convert_tpr with extend_time (ps) to create a new .tpr with more steps
+   - Then resume mdrun with the new .tpr and the existing .cpt file
+3. Never regenerate velocities on resume — always set gen_vel=no, continuation=yes
+
 ## Common Error Patterns to Detect and Fix
 - grompp: "ERROR: atom X not found" → topology file incomplete or mismatched
 - grompp: "LINCS warnings" → reduce dt (try 0.001 ps) or relax constraints
@@ -139,6 +149,24 @@ TOOLS: list[dict[str, Any]] = [
                 "work_dir":   {"type": "string", "default": "."},
             },
             "required": ["subcommand", "args"],
+        },
+    },
+    {
+        "name": "convert_tpr",
+        "description": (
+            "Run gmx convert-tpr to extend or modify a .tpr for resuming. "
+            "Use before resume mdrun when you need more steps beyond the original nsteps."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_tpr":   {"type": "string", "description": "Path to the existing .tpr file"},
+                "output_tpr":  {"type": "string", "description": "Path for the new .tpr file"},
+                "extend_time": {"type": ["number", "null"], "default": None, "description": "Additional time in ps"},
+                "nsteps":      {"type": ["integer", "null"], "default": None, "description": "New total number of steps"},
+                "run_time":    {"type": ["number", "null"], "default": None, "description": "New total run time in ps"},
+            },
+            "required": ["input_tpr", "output_tpr"],
         },
     },
     # ── PLUMED ──
@@ -547,6 +575,7 @@ class MDAgent:
             "run_mdrun":         gmx.mdrun,
             "wait_mdrun":        gmx.wait_mdrun,
             "run_gmx_command":   gmx.run_gmx_command,
+            "convert_tpr":       gmx.convert_tpr,
             # PLUMED
             "generate_plumed_metadynamics": plumed.generate_metadynamics,
             "generate_plumed_umbrella":     plumed.generate_umbrella,

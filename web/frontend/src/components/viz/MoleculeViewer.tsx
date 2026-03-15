@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertCircle, Crosshair, Camera } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 
+type ExportBg = "white" | "black" | "transparent";
+
 function parseStructureInfo(
   content: string,
   fileName: string,
@@ -63,6 +65,12 @@ const REP_LABELS: { key: keyof RepState; label: string }[] = [
   { key: "surface", label: "Surface" },
 ];
 
+const BG_OPTIONS: { value: ExportBg; label: string }[] = [
+  { value: "white",       label: "White"       },
+  { value: "black",       label: "Black"       },
+  { value: "transparent", label: "Transparent" },
+];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyRepresentations(component: any, reps: RepState) {
   component.removeAllRepresentations();
@@ -87,6 +95,26 @@ const DEFAULT_REPS: RepState = {
   surface: false,
 };
 
+/**
+ * Capture an image from an NGL stage with the chosen background.
+ * Temporarily swaps the stage background, captures, then restores.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function captureImage(stage: any, bg: ExportBg, opts: Record<string, unknown> = {}): Promise<Blob> {
+  const isTransparent = bg === "transparent";
+  const originalBg = stage.getParameters().backgroundColor;
+
+  if (!isTransparent) {
+    stage.setParameters({ backgroundColor: bg });
+  }
+
+  try {
+    return await stage.makeImage({ factor: 6, antialias: true, trim: false, transparent: isTransparent, ...opts });
+  } finally {
+    stage.setParameters({ backgroundColor: originalBg });
+  }
+}
+
 export default function MoleculeViewer({ fileContent, fileName, onClose, inline = false }: Props) {
   const containerRef     = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,6 +129,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   const [error, setError]           = useState<string | null>(null);
   const [reps, setReps]             = useState<RepState>(DEFAULT_REPS);
   const [structInfo, setStructInfo] = useState<{ atoms: number; residues: number } | null>(null);
+  const [exportBg, setExportBg]     = useState<ExportBg>("white");
 
   // Keep repsRef in sync so the load effect never reads stale state
   useEffect(() => { repsRef.current = reps; }, [reps]);
@@ -212,7 +241,6 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   }, [fileContent, fileName]);
 
   const handleResetView = () => {
-    console.log("[MoleculeViewer] Reset View clicked", { fileName, ready });
     if (!stageRef.current) return;
     if (initialOrientRef.current) {
       stageRef.current.animationControls.orient(initialOrientRef.current, 800);
@@ -221,42 +249,51 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
     }
   };
 
-  const handleScreenshot = () => {
-    console.log("[MoleculeViewer] Screenshot clicked", { fileName, ready });
+  const handleScreenshot = async () => {
     if (!stageRef.current) return;
-    stageRef.current
-      .makeImage({ factor: 6, antialias: true, trim: false, transparent: true })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then((blob: any) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${fileName.replace(/\.[^.]+$/, "")}_view.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      });
+    const blob = await captureImage(stageRef.current, exportBg);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${fileName.replace(/\.[^.]+$/, "")}_view.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleRepToggle = (key: keyof RepState) => {
-    setReps((prev) => {
-      const next = !prev[key];
-      console.log("[MoleculeViewer] Representation toggle clicked", {
-        fileName,
-        representation: key,
-        previous: prev[key],
-        next,
-        ready,
-      });
-      return { ...prev, [key]: next };
-    });
+    setReps((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  /** Background selector row */
+  const bgSelector = (
+    <div>
+      <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-600 uppercase tracking-wider block text-center mb-1">
+        Export BG
+      </span>
+      <div className="flex gap-1">
+        {BG_OPTIONS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setExportBg(value)}
+            className={`flex-1 py-1 rounded text-[10px] font-medium border transition-colors ${
+              exportBg === value
+                ? "bg-indigo-600 border-indigo-500 text-white"
+                : "bg-gray-100 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   /** Toggle buttons shown to the right of the canvas */
   const repColumn = (
     <div className="flex flex-col gap-1.5 w-[148px] flex-shrink-0 pt-0.5">
-      <span className="text-[9px] font-semibold text-gray-600 uppercase tracking-wider text-center">
+      <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-600 uppercase tracking-wider text-center">
         Representation
       </span>
       {REP_LABELS.map(({ key, label }) => {
@@ -269,19 +306,21 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
             className={`py-2 rounded-lg text-xs font-medium text-center transition-colors border disabled:opacity-40 ${
               on
                 ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                : "bg-gray-100 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800"
             }`}
           >
             {label}
           </button>
         );
       })}
-      <div className="h-px bg-gray-700/50 my-0.5" />
+      <div className="h-px bg-gray-200 dark:bg-gray-700/50 my-0.5" />
+      {bgSelector}
+      <div className="h-px bg-gray-200 dark:bg-gray-700/50 my-0.5" />
       <button
         onClick={handleResetView}
         disabled={!ready}
         title="Reset view"
-        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-200 dark:border-gray-700/50 bg-gray-100 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-40"
       >
         <Crosshair size={12} />
         Reset View
@@ -290,7 +329,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
         onClick={handleScreenshot}
         disabled={!ready}
         title="Download screenshot"
-        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-700/50 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-200 dark:border-gray-700/50 bg-gray-100 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-40"
       >
         <Camera size={12} />
         Screenshot
@@ -303,18 +342,18 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
       <div className="flex gap-3 items-start">
         {/* Viewer canvas */}
         <div
-          className="relative flex-1 rounded-xl overflow-hidden border border-gray-700/60 bg-gray-900 min-w-0"
+          className="relative flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700/60 bg-gray-100 dark:bg-gray-900 min-w-0"
           style={{ height: "520px" }}
         >
           {error ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 gap-2 p-4 z-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 gap-2 p-4 z-10">
               <AlertCircle size={20} />
               <span className="text-xs text-center break-all">{error}</span>
             </div>
           ) : !ready ? (
             <div className="absolute inset-0 flex items-center justify-center text-gray-400 z-10">
               <Loader2 size={20} className="animate-spin mr-2" />
-              <span className="text-xs">Loading…</span>
+              <span className="text-xs">Loading\u2026</span>
             </div>
           ) : null}
           <div ref={containerRef} className="w-full h-full" />
@@ -345,14 +384,14 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
       <div
-        className="bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-700"
+        className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700"
         style={{ width: "75vw", height: "75vh" }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-mono text-gray-200">{fileName}</span>
-            <span className="text-xs text-gray-500">3D Viewer</span>
+            <span className="text-sm font-mono text-gray-800 dark:text-gray-200">{fileName}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">3D Viewer</span>
             {/* Toggle buttons in popup header */}
             <div className="flex gap-1 ml-2">
               {REP_LABELS.map(({ key, label }) => {
@@ -365,7 +404,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                     className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border disabled:opacity-40 ${
                       on
                         ? "bg-indigo-600 border-indigo-500 text-white"
-                        : "bg-gray-700/50 border-gray-600/50 text-gray-400 hover:text-gray-200"
+                        : "bg-gray-200 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                     }`}
                   >
                     {label}
@@ -373,10 +412,26 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                 );
               })}
             </div>
+            {/* Background selector in popup header */}
+            <div className="flex gap-1 ml-2 border-l border-gray-200 dark:border-gray-600 pl-2">
+              {BG_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setExportBg(value)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
+                    exportBg === value
+                      ? "bg-indigo-600 border-indigo-500 text-white"
+                      : "bg-gray-200 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <X size={16} />
           </button>
@@ -385,20 +440,20 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
         {/* Viewer */}
         <div className="relative flex-1">
           {error ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 gap-2 z-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 gap-2 z-10">
               <AlertCircle size={24} />
               <span className="text-sm">{error}</span>
             </div>
           ) : !ready ? (
             <div className="absolute inset-0 flex items-center justify-center text-gray-400 z-10">
               <Loader2 size={24} className="animate-spin mr-2" />
-              <span className="text-sm">Loading viewer…</span>
+              <span className="text-sm">Loading viewer\u2026</span>
             </div>
           ) : null}
           <div ref={containerRef} className="w-full h-full" />
         </div>
 
-        <div className="px-4 py-2 bg-gray-800/50 border-t border-gray-700 text-xs text-gray-500 flex-shrink-0">
+        <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
           Drag to rotate · Scroll to zoom · Right-click to translate
         </div>
       </div>

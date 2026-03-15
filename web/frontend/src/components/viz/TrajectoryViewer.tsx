@@ -5,6 +5,24 @@ import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X
 import { downloadUrl, getFileContent } from "@/lib/api";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 
+type ExportBg = "white" | "black" | "transparent";
+
+/**
+ * Capture an image from an NGL stage with the chosen background.
+ * Temporarily swaps the stage background colour, captures, then restores.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function captureImage(stage: any, bg: ExportBg, opts: Record<string, unknown> = {}): Promise<Blob> {
+  const isTransparent = bg === "transparent";
+  const originalBg = stage.getParameters().backgroundColor;
+  if (!isTransparent) stage.setParameters({ backgroundColor: bg });
+  try {
+    return await stage.makeImage({ transparent: isTransparent, ...opts });
+  } finally {
+    stage.setParameters({ backgroundColor: originalBg });
+  }
+}
+
 interface Props {
   sessionId: string;
   topologyPath: string | null;
@@ -99,8 +117,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const settingsRef                     = useRef<HTMLDivElement>(null);
 
   const [exportSettings, setExportSettings] = useState({
-    screenshot: { factor: 6, antialias: true,  trim: false, transparent: true  },
-    gif:        { factor: 1, antialias: true, trim: false, transparent: true, maxFrames: 60, frameDelay: 80 },
+    screenshot: { factor: 6, antialias: true,  trim: false, background: "white" as ExportBg },
+    gif:        { factor: 1, antialias: true, trim: false, background: "white" as ExportBg, maxFrames: 60, frameDelay: 80 },
   });
 
   // Close settings panel on outside click
@@ -322,22 +340,19 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     }
   };
 
-  const handleScreenshot = () => {
+  const handleScreenshot = async () => {
     if (!stageRef.current) return;
-    stageRef.current
-      .makeImage({ ...exportSettings.screenshot })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then((blob: any) => {
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        const base = (topologyPath ?? "").split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
-        a.href     = url;
-        a.download = `${base}_trajectory_view.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      });
+    const { background, ...opts } = exportSettings.screenshot;
+    const blob = await captureImage(stageRef.current, background, opts);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    const base = (topologyPath ?? "").split("/").pop()?.replace(/\.[^.]+$/, "") || "trajectory";
+    a.href     = url;
+    a.download = `${base}_trajectory_view.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleGifExport = async () => {
@@ -409,8 +424,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           setTimeout(() => settle(), 2000);
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const blob: Blob = await stageRef.current!.makeImage({ ...exportSettings.gif }) as any;
+        const { background: gifBg, maxFrames: _mf, frameDelay: _fd, ...gifOpts } = exportSettings.gif;
+        const blob: Blob = await captureImage(stageRef.current!, gifBg, gifOpts);
         const imgUrl = URL.createObjectURL(blob);
         await new Promise<void>((resolve) => {
           const img = new Image();
@@ -609,7 +624,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                         <span className="w-5 text-right text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
                       </div>
                       {/* Booleans */}
-                      {(["antialias", "trim", "transparent"] as const).map((key) => (
+                      {(["antialias", "trim"] as const).map((key) => (
                         <div key={key} className="flex items-center justify-between">
                           <span className="text-gray-400 capitalize">{key}</span>
                           <button
@@ -620,6 +635,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                           </button>
                         </div>
                       ))}
+                      {/* Background */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Background</span>
+                        <div className="flex gap-1">
+                          {(["white", "black", "transparent"] as const).map((bg) => (
+                            <button
+                              key={bg}
+                              onClick={() => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, background: bg } }))}
+                              className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                                exportSettings.screenshot.background === bg
+                                  ? "bg-indigo-600 border-indigo-500 text-white"
+                                  : "bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300"
+                              }`}
+                            >
+                              {bg === "transparent" ? "None" : bg[0].toUpperCase() + bg.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -663,7 +697,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                         <span className="w-8 text-right text-gray-300 tabular-nums">{exportSettings.gif.frameDelay}ms</span>
                       </div>
                       {/* Booleans */}
-                      {(["antialias", "trim", "transparent"] as const).map((key) => (
+                      {(["antialias", "trim"] as const).map((key) => (
                         <div key={key} className="flex items-center justify-between">
                           <span className="text-gray-400 capitalize">{key}</span>
                           <button
@@ -674,6 +708,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                           </button>
                         </div>
                       ))}
+                      {/* Background */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Background</span>
+                        <div className="flex gap-1">
+                          {(["white", "black", "transparent"] as const).map((bg) => (
+                            <button
+                              key={bg}
+                              onClick={() => setExportSettings((s) => ({ ...s, gif: { ...s.gif, background: bg } }))}
+                              className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                                exportSettings.gif.background === bg
+                                  ? "bg-indigo-600 border-indigo-500 text-white"
+                                  : "bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300"
+                              }`}
+                            >
+                              {bg === "transparent" ? "None" : bg[0].toUpperCase() + bg.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -41,6 +41,9 @@ MDP_KEY_MAP: dict[str, str] = {
     "nstlog":               "nstlog",
     "nstxout_compressed":   "nstxout-compressed",
     "nstenergy":            "nstenergy",
+    "gen_vel":              "gen-vel",
+    "gen_seed":             "gen-seed",
+    "continuation":         "continuation",
 }
 
 

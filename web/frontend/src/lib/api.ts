@@ -314,8 +314,13 @@ export async function getSimulationStatus(
   return json(await fetch(`${BASE}/sessions/${sessionId}/simulate/status`));
 }
 
-export async function stopSimulation(sessionId: string): Promise<{ stopped: boolean }> {
+export async function stopSimulation(sessionId: string): Promise<{ stopped: boolean; has_checkpoint: boolean }> {
   const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/stop`, { method: "POST" });
+  return json(res);
+}
+
+export async function checkCheckpoint(sessionId: string): Promise<{ has_checkpoint: boolean }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/checkpoint-status`);
   return json(res);
 }
 
@@ -326,7 +331,7 @@ export async function terminateSimulation(sessionId: string): Promise<{ terminat
 
 export async function resumeSimulation(
   sessionId: string
-): Promise<{ status: string; pid: number; resumed: boolean; expected_files: Record<string, string> }> {
+): Promise<{ status: string; pid?: number; resumed: boolean; expected_files?: Record<string, string>; message?: string }> {
   const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/resume`, { method: "POST" });
   return json(res);
 }

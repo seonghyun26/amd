@@ -48,6 +48,10 @@ constraint_algorithm: LINCS
 lincs_iter: 1
 lincs_order: 4
 
+# Velocity generation
+gen_vel: "yes"
+gen_seed: -1              # -1 = use random seed
+
 # Output frequencies (steps)
 nstxout: 5000
 nstvout: 5000

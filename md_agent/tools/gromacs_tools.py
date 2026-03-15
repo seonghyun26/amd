@@ -63,6 +63,7 @@ class GROMACSRunner:
         if self._docker_image:
             docker_prefix = [
                 "docker", "run", "--rm", "-i",
+                "--init",  # tini reaps zombies and forwards signals properly
                 "-w", "/work",
                 "-v", f"{work_dir.resolve()}:/work",
             ]
@@ -98,6 +99,25 @@ class GROMACSRunner:
             result.returncode = 1  # treat embedded errors as failure
         return result
 
+    def _find_docker_container(self, pid: int) -> Optional[str]:
+        """Find the Docker container ID for a running `docker run` process."""
+        if not self._docker_image:
+            return None
+        try:
+            # `docker run` with --rm: the container name is auto-generated.
+            # We can find it by matching the PID of the `docker run` process
+            # to the container via `docker ps` filtering by the image.
+            result = subprocess.run(
+                ["docker", "ps", "-q", "--filter", f"ancestor={self._docker_image}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            containers = result.stdout.strip().splitlines()
+            if containers:
+                return containers[-1]  # most recent container for this image
+        except Exception:
+            pass
+        return None
+
     def _cleanup(self) -> None:
         proc = self._mdrun_proc
         if proc is None:
@@ -111,9 +131,24 @@ class GROMACSRunner:
                         proc.stdout.close()
                     except Exception:
                         pass
-                proc.terminate()
+
+                # For Docker-wrapped mdrun, use `docker stop` with a grace
+                # period so GROMACS receives SIGTERM *inside* the container
+                # and has time to flush its checkpoint file.
+                container_id = self._find_docker_container(proc.pid)
+                if container_id:
+                    try:
+                        subprocess.run(
+                            ["docker", "stop", "-t", "30", container_id],
+                            capture_output=True, timeout=40,
+                        )
+                    except Exception:
+                        proc.terminate()
+                else:
+                    proc.terminate()
+
                 try:
-                    proc.wait(timeout=10)
+                    proc.wait(timeout=35)
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=5)
@@ -166,7 +201,21 @@ class GROMACSRunner:
 
         The process handle is stored in ``self._mdrun_proc``.
         Call ``wait_mdrun()`` to block until completion.
+
+        When *cpt_file* is provided the run resumes from that checkpoint.
+        ``-append`` is added automatically so output files are continued
+        rather than restarted with part suffixes.
         """
+        # Validate required files exist
+        tpr_path = self.work_dir / tpr_file
+        if not tpr_path.exists():
+            return {"error": f"TPR file not found: {tpr_path}"}
+
+        if cpt_file:
+            cpt_path = self.work_dir / cpt_file
+            if not cpt_path.exists():
+                return {"error": f"Checkpoint file not found: {cpt_path}"}
+
         args = [
             "mdrun", "-v",
             "-s", tpr_file,
@@ -177,10 +226,10 @@ class GROMACSRunner:
             args += ["-plumed", plumed_file]
         if gpu_id:
             args += ["-gpu_id", gpu_id]
-        if append:
-            args += ["-append"]
         if cpt_file:
-            args += ["-cpi", cpt_file]
+            args += ["-cpi", cpt_file, "-append"]
+        elif append:
+            args += ["-append"]
         if extra_flags:
             args.extend(extra_flags)
 
@@ -244,6 +293,39 @@ class GROMACSRunner:
         )
         stdout, stderr = proc.communicate(input=stdin_text)
         return GMXResult(proc.returncode, stdout, stderr).to_dict()
+
+    def convert_tpr(
+        self,
+        input_tpr: str,
+        output_tpr: str,
+        extend_time: Optional[float] = None,
+        nsteps: Optional[int] = None,
+        run_time: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """Run gmx convert-tpr to modify a .tpr for resuming/extending.
+
+        Exactly one of *extend_time* (ps to add), *nsteps* (new total steps),
+        or *run_time* (new total time in ps) should be provided.
+        """
+        tpr_path = self.work_dir / input_tpr
+        if not tpr_path.exists():
+            return {"error": f"Input TPR not found: {tpr_path}"}
+
+        args = ["convert-tpr", "-s", input_tpr, "-o", output_tpr]
+        if extend_time is not None:
+            args += ["-extend", str(extend_time)]
+        elif nsteps is not None:
+            args += ["-nsteps", str(nsteps)]
+        elif run_time is not None:
+            args += ["-until", str(run_time)]
+        else:
+            return {"error": "Provide one of: extend_time, nsteps, or run_time"}
+
+        result = self._run(args)
+        out = result.to_dict()
+        if result.success:
+            out["output_files"]["tpr"] = output_tpr
+        return out
 
     def check_gromacs_energy(
         self,

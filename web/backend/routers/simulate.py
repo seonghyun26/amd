@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -12,6 +14,24 @@ from omegaconf import OmegaConf
 from web.backend.session_manager import get_session
 
 router = APIRouter()
+
+
+def _auto_detect_gpu() -> str | None:
+    """Return the index of the first idle GPU, or None."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return None
+        for line in r.stdout.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 2 and int(parts[1]) < 10:
+                return parts[0]
+    except Exception:
+        pass
+    return None
 
 _COORD_EXTS = {".gro", ".pdb"}
 
@@ -313,7 +333,11 @@ async def start_simulation(session_id: str):
             raise HTTPException(500, f"grompp failed:\n{grompp.get('stderr', '')[-2000:]}")
 
         # ── Step D: launch mdrun (non-blocking) ────────────────────────────
+        # Clean out stale simulation outputs from a previous (e.g. paused/failed) run
+        # so GROMACS starts fresh without conflicting partial files.
         sim_dir = work_dir / _SIM_SUBDIR
+        if sim_dir.exists():
+            shutil.rmtree(sim_dir)
         sim_dir.mkdir(exist_ok=True)
         output_prefix = f"{_SIM_SUBDIR}/md"
         # Ensure a fresh Docker-backed mdrun process per launch.
@@ -322,11 +346,20 @@ async def start_simulation(session_id: str):
         except Exception:
             pass
         gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
+        # Auto-detect an available GPU if none was explicitly configured
+        if not gpu_id:
+            gpu_id = _auto_detect_gpu()
         # Pass plumed.dat for enhanced-sampling methods
         method_name = OmegaConf.select(cfg, "method._target_name") or "md"
         plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
         plumed_file = "plumed.dat" if method_name in plumed_methods and (work_dir / "plumed.dat").exists() else None
-        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix, gpu_id=gpu_id, plumed_file=plumed_file)
+        mdrun = gmx.mdrun(
+            tpr_file="md.tpr",
+            output_prefix=output_prefix,
+            gpu_id=gpu_id,
+            plumed_file=plumed_file,
+            extra_flags=["-cpt", "0.1"],  # checkpoint every ~6s so pause/resume works
+        )
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
         session.sim_status = {
             "status": "running",
@@ -366,13 +399,21 @@ async def simulation_status(session_id: str):
 
 @router.post("/sessions/{session_id}/simulate/stop")
 async def stop_simulation(session_id: str):
-    """Terminate a running mdrun process (pause — checkpoint preserved for resume)."""
+    """Terminate a running mdrun process (pause — checkpoint preserved for resume).
+
+    After SIGTERM GROMACS should flush a checkpoint file.  We verify it exists
+    so the user knows whether resume is possible.
+    """
     from web.backend.session_manager import stop_session_simulation
     stopped = stop_session_simulation(session_id)
     session = get_session(session_id)
+    has_checkpoint = False
     if session:
         _persist_run_status(session, "paused")
-    return {"stopped": stopped}
+        work_dir = Path(session.work_dir)
+        cpt = work_dir / _SIM_SUBDIR / "md.cpt"
+        has_checkpoint = cpt.exists()
+    return {"stopped": stopped, "has_checkpoint": has_checkpoint}
 
 
 @router.post("/sessions/{session_id}/simulate/terminate")
@@ -385,6 +426,17 @@ async def terminate_simulation(session_id: str):
         session.sim_status = {}
         _persist_run_status(session, "standby")
     return {"terminated": True}
+
+
+@router.get("/sessions/{session_id}/simulate/checkpoint-status")
+async def checkpoint_status(session_id: str):
+    """Check whether a checkpoint file exists for resume."""
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    work_dir = Path(session.work_dir)
+    cpt = work_dir / _SIM_SUBDIR / "md.cpt"
+    return {"has_checkpoint": cpt.exists()}
 
 
 @router.post("/sessions/{session_id}/simulate/resume")
@@ -406,10 +458,13 @@ async def resume_simulation(session_id: str):
     cpt_file = work_dir / f"{output_prefix}.cpt"
 
     if not cpt_file.exists():
-        raise HTTPException(
-            400,
-            "No checkpoint file found — cannot resume. Start a new simulation instead.",
-        )
+        # Reset to standby so the user can start fresh
+        _persist_run_status(session, "standby")
+        return {
+            "status": "no_checkpoint",
+            "resumed": False,
+            "message": "No checkpoint file found. The simulation ran too briefly to save a checkpoint. Please start a new simulation.",
+        }
 
     tpr_file = "md.tpr"
     if not (work_dir / tpr_file).exists():
@@ -423,6 +478,8 @@ async def resume_simulation(session_id: str):
             pass
 
         gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
+        if not gpu_id:
+            gpu_id = _auto_detect_gpu()
 
         # Generate plumed.dat if needed (same as initial launch)
         method_name = OmegaConf.select(cfg, "method._target_name") or "plain_md"
@@ -435,9 +492,9 @@ async def resume_simulation(session_id: str):
             tpr_file=tpr_file,
             output_prefix=output_prefix,
             gpu_id=gpu_id,
-            append=True,
             cpt_file=f"{output_prefix}.cpt",
             plumed_file=plumed_file,
+            extra_flags=["-cpt", "1"],
         )
 
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")

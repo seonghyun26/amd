@@ -2,16 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ── Light theme ──────────────────────────────────────────────────── */
+:root,
+html.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1a1a1a;
-    --foreground: #ededed;
-  }
+html.light body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* ── Dark theme ───────────────────────────────────────────────────── */
+html.dark {
+  --background: #030712;
+  --foreground: #f1f5f9;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background: #030712;
+  color: #f1f5f9;
 }
 
 body {
@@ -23,14 +36,19 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-/* Scrollbar styling — dark theme */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+/* ── Scrollbar — dark ─────────────────────────────────────────────── */
+html.dark ::-webkit-scrollbar { width: 5px; height: 5px; }
+html.dark ::-webkit-scrollbar-track { background: transparent; }
+html.dark ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+html.dark * { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
 
-/* Firefox */
-* { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+/* ── Scrollbar — light ────────────────────────────────────────────── */
+html.light ::-webkit-scrollbar { width: 5px; height: 5px; }
+html.light ::-webkit-scrollbar-track { background: transparent; }
+html.light ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+html.light * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 
 /* Tabular numbers for data-heavy displays */
 .font-mono {

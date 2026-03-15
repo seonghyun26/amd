@@ -95,6 +95,9 @@ class GromacsSchema(BaseModel):
     rlist: float = Field(gt=0, description="nm")
     rcoulomb: float = Field(gt=0, description="nm")
     rvdw: float = Field(gt=0, description="nm")
+    gen_vel: Optional[str] = None
+    gen_seed: Optional[int] = None
+    continuation: Optional[str] = None
 
     @field_validator("integrator")
     @classmethod
