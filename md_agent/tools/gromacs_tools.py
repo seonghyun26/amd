@@ -7,7 +7,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -46,8 +46,8 @@ class GROMACSRunner:
     def __init__(self, gmx_executable: str = "gmx", work_dir: str = "."):
         self.gmx = gmx_executable
         self.work_dir = Path(work_dir)
-        self._mdrun_proc: Optional[subprocess.Popen] = None
-        self._docker_image: Optional[str] = os.environ.get("GMX_DOCKER_IMAGE")
+        self._mdrun_proc: subprocess.Popen | None = None
+        self._docker_image: str | None = os.environ.get("GMX_DOCKER_IMAGE")
         # Ensure mdrun is terminated if Python exits unexpectedly
         atexit.register(self._cleanup)
 
@@ -57,15 +57,20 @@ class GROMACSRunner:
         self,
         gmx_args: list[str],
         work_dir: Path,
-        gpu_id: Optional[str] = None,
+        gpu_id: str | None = None,
     ) -> list[str]:
         """Return the full command list, Docker-wrapped when image is configured."""
         if self._docker_image:
             docker_prefix = [
-                "docker", "run", "--rm", "-i",
+                "docker",
+                "run",
+                "--rm",
+                "-i",
                 "--init",  # tini reaps zombies and forwards signals properly
-                "-w", "/work",
-                "-v", f"{work_dir.resolve()}:/work",
+                "-w",
+                "/work",
+                "-v",
+                f"{work_dir.resolve()}:/work",
             ]
             if gpu_id:
                 docker_prefix += ["--gpus", f"device={gpu_id}"]
@@ -75,8 +80,8 @@ class GROMACSRunner:
     def _run(
         self,
         args: list[str],
-        stdin_text: Optional[str] = None,
-        timeout: Optional[int] = None,
+        stdin_text: str | None = None,
+        timeout: int | None = None,
     ) -> GMXResult:
         """Run a blocking gmx subcommand."""
         cmd = self._build_cmd(args, self.work_dir)
@@ -99,7 +104,7 @@ class GROMACSRunner:
             result.returncode = 1  # treat embedded errors as failure
         return result
 
-    def _find_docker_container(self, pid: int) -> Optional[str]:
+    def _find_docker_container(self, pid: int) -> str | None:
         """Find the Docker container ID for a running `docker run` process."""
         if not self._docker_image:
             return None
@@ -109,7 +114,9 @@ class GROMACSRunner:
             # to the container via `docker ps` filtering by the image.
             result = subprocess.run(
                 ["docker", "ps", "-q", "--filter", f"ancestor={self._docker_image}"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             containers = result.stdout.strip().splitlines()
             if containers:
@@ -140,7 +147,8 @@ class GROMACSRunner:
                     try:
                         subprocess.run(
                             ["docker", "stop", "-t", "30", container_id],
-                            capture_output=True, timeout=40,
+                            capture_output=True,
+                            timeout=40,
                         )
                     except Exception:
                         proc.terminate()
@@ -165,17 +173,22 @@ class GROMACSRunner:
         topology_file: str,
         coordinate_file: str,
         output_tpr: str,
-        index_file: Optional[str] = None,
+        index_file: str | None = None,
         max_warnings: int = 0,
     ) -> dict[str, Any]:
         """Prepare a GROMACS .tpr run input file."""
         args = [
             "grompp",
-            "-f", mdp_file,
-            "-p", topology_file,
-            "-c", coordinate_file,
-            "-o", output_tpr,
-            "-maxwarn", str(max_warnings),
+            "-f",
+            mdp_file,
+            "-p",
+            topology_file,
+            "-c",
+            coordinate_file,
+            "-o",
+            output_tpr,
+            "-maxwarn",
+            str(max_warnings),
         ]
         if index_file:
             args += ["-n", index_file]
@@ -190,12 +203,12 @@ class GROMACSRunner:
         self,
         tpr_file: str,
         output_prefix: str,
-        plumed_file: Optional[str] = None,
+        plumed_file: str | None = None,
         n_cores: int = 1,
-        gpu_id: Optional[str] = None,
+        gpu_id: str | None = None,
         append: bool = False,
-        cpt_file: Optional[str] = None,
-        extra_flags: Optional[list[str]] = None,
+        cpt_file: str | None = None,
+        extra_flags: list[str] | None = None,
     ) -> dict[str, Any]:
         """Launch gmx mdrun as a NON-BLOCKING process.
 
@@ -217,10 +230,14 @@ class GROMACSRunner:
                 return {"error": f"Checkpoint file not found: {cpt_path}"}
 
         args = [
-            "mdrun", "-v",
-            "-s", tpr_file,
-            "-deffnm", output_prefix,
-            "-ntomp", str(n_cores),
+            "mdrun",
+            "-v",
+            "-s",
+            tpr_file,
+            "-deffnm",
+            output_prefix,
+            "-ntomp",
+            str(n_cores),
         ]
         if plumed_file:
             args += ["-plumed", plumed_file]
@@ -252,7 +269,7 @@ class GROMACSRunner:
             },
         }
 
-    def wait_mdrun(self, timeout: Optional[int] = None) -> dict[str, Any]:
+    def wait_mdrun(self, timeout: int | None = None) -> dict[str, Any]:
         """Block until the running mdrun process finishes."""
         if self._mdrun_proc is None:
             return {"error": "No mdrun process is running"}
@@ -277,7 +294,7 @@ class GROMACSRunner:
         self,
         subcommand: str,
         args: list[str],
-        stdin_text: Optional[str] = None,
+        stdin_text: str | None = None,
         work_dir: str = ".",
     ) -> dict[str, Any]:
         """Run an arbitrary gmx analysis subcommand (blocking)."""
@@ -298,9 +315,9 @@ class GROMACSRunner:
         self,
         input_tpr: str,
         output_tpr: str,
-        extend_time: Optional[float] = None,
-        nsteps: Optional[int] = None,
-        run_time: Optional[float] = None,
+        extend_time: float | None = None,
+        nsteps: int | None = None,
+        run_time: float | None = None,
     ) -> dict[str, Any]:
         """Run gmx convert-tpr to modify a .tpr for resuming/extending.
 
@@ -342,7 +359,7 @@ class GROMACSRunner:
         # First, get the list of available terms
         probe = self._run(
             ["energy", "-f", edr_file, "-o", "/dev/null"],
-            stdin_text="0\n",   # term 0 = quit after listing
+            stdin_text="0\n",  # term 0 = quit after listing
         )
         # Parse term names and their indices from the output
         term_index_map: dict[str, int] = {}

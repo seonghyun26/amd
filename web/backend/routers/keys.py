@@ -44,7 +44,10 @@ async def verify_api_key(username: str, service: str):
                         "anthropic-version": "2023-06-01",
                     },
                 )
-            return {"valid": r.status_code == 200, "error": None if r.status_code == 200 else f"HTTP {r.status_code}"}
+            return {
+                "valid": r.status_code == 200,
+                "error": None if r.status_code == 200 else f"HTTP {r.status_code}",
+            }
 
         if service == "openai":
             async with httpx.AsyncClient(timeout=10) as client:
@@ -52,7 +55,10 @@ async def verify_api_key(username: str, service: str):
                     "https://api.openai.com/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-            return {"valid": r.status_code == 200, "error": None if r.status_code == 200 else f"HTTP {r.status_code}"}
+            return {
+                "valid": r.status_code == 200,
+                "error": None if r.status_code == 200 else f"HTTP {r.status_code}",
+            }
 
         if service == "deepseek":
             async with httpx.AsyncClient(timeout=10) as client:
@@ -60,7 +66,10 @@ async def verify_api_key(username: str, service: str):
                     "https://api.deepseek.com/v1/models",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-            return {"valid": r.status_code == 200, "error": None if r.status_code == 200 else f"HTTP {r.status_code}"}
+            return {
+                "valid": r.status_code == 200,
+                "error": None if r.status_code == 200 else f"HTTP {r.status_code}",
+            }
 
         if service == "wandb":
             async with httpx.AsyncClient(timeout=10) as client:
@@ -68,7 +77,10 @@ async def verify_api_key(username: str, service: str):
                     "https://api.wandb.ai/auth",
                     headers={"Authorization": f"Bearer {key}"},
                 )
-            return {"valid": r.status_code == 200, "error": None if r.status_code == 200 else f"HTTP {r.status_code}"}
+            return {
+                "valid": r.status_code == 200,
+                "error": None if r.status_code == 200 else f"HTTP {r.status_code}",
+            }
 
         return {"valid": False, "error": f"Unknown service: {service}"}
 

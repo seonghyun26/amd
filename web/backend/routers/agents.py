@@ -55,28 +55,45 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
         try:
             if agent_type == "paper":
                 from md_agent.agents.paper_agent import PaperConfigAgent
+
                 agent = PaperConfigAgent(work_dir=work_dir, session=session)
-                async for ev in agent.astream(input or "Please find and extract MD settings from a relevant paper."):
+                async for ev in agent.astream(
+                    input or "Please find and extract MD settings from a relevant paper."
+                ):
                     yield _fmt(ev)
 
             elif agent_type == "analysis":
                 from md_agent.agents.analysis_agent import AnalysisAgent
+
                 agent = AnalysisAgent(work_dir)
                 async for ev in agent.astream(input or "Analyse the simulation results."):
                     yield _fmt(ev)
 
             elif agent_type == "cv":
                 from md_agent.agents.cv_agent import CVAgent
+
                 agent = CVAgent(work_dir, session=session)
-                async for ev in agent.astream(input or "Read the structure and suggest appropriate CVs for metadynamics."):
+                async for ev in agent.astream(
+                    input or "Read the structure and suggest appropriate CVs for metadynamics."
+                ):
                     yield _fmt(ev)
 
         except (ImportError, AttributeError):
-            yield _fmt({"type": "error", "message": "API key is not set or agent dependencies are missing. Please add your Anthropic API key in Settings (top-right gear icon)."})
+            yield _fmt(
+                {
+                    "type": "error",
+                    "message": "API key is not set or agent dependencies are missing. Please add your Anthropic API key in Settings (top-right gear icon).",
+                }
+            )
             yield _fmt({"type": "agent_done", "final_text": ""})
         except Exception as exc:
             msg = str(exc)
-            if "api_key" in msg.lower() or "auth_token" in msg.lower() or "authentication" in msg.lower() or "unauthorized" in msg.lower():
+            if (
+                "api_key" in msg.lower()
+                or "auth_token" in msg.lower()
+                or "authentication" in msg.lower()
+                or "unauthorized" in msg.lower()
+            ):
                 msg = "API key is not set. Please add your Anthropic API key in Settings (top-right gear icon)."
             yield _fmt({"type": "error", "message": msg})
             yield _fmt({"type": "agent_done", "final_text": ""})

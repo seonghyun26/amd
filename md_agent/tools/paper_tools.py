@@ -6,7 +6,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -17,15 +17,20 @@ from md_agent.utils.parsers import normalize_extracted_settings
 
 _S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _DEFAULT_FIELDS = [
-    "title", "abstract", "year", "authors",
-    "externalIds", "openAccessPdf", "url",
+    "title",
+    "abstract",
+    "year",
+    "authors",
+    "externalIds",
+    "openAccessPdf",
+    "url",
 ]
 
 
 class PaperRetriever:
     """Retrieves papers from Semantic Scholar and ArXiv."""
 
-    def __init__(self, s2_api_key: Optional[str] = None) -> None:
+    def __init__(self, s2_api_key: str | None = None) -> None:
         self._s2_headers = {"x-api-key": s2_api_key} if s2_api_key else {}
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -33,7 +38,7 @@ class PaperRetriever:
         self,
         query: str,
         max_results: int = 10,
-        fields: Optional[list[str]] = None,
+        fields: list[str] | None = None,
     ) -> dict[str, Any]:
         """Search Semantic Scholar for papers matching a query."""
         fields = fields or _DEFAULT_FIELDS
@@ -94,7 +99,7 @@ class PaperRetriever:
     def extract_text_from_pdf(
         self,
         pdf_path: str,
-        pages: Optional[list[int]] = None,
+        pages: list[int] | None = None,
         max_chars: int = 50000,
     ) -> dict[str, Any]:
         """Extract readable text from a PDF using pdfplumber.
@@ -113,8 +118,7 @@ class PaperRetriever:
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 page_list = (
-                    [pdf.pages[i] for i in pages if i < len(pdf.pages)]
-                    if pages else pdf.pages
+                    [pdf.pages[i] for i in pages if i < len(pdf.pages)] if pages else pdf.pages
                 )
                 for page in page_list:
                     extracted = page.extract_text()
@@ -126,9 +130,13 @@ class PaperRetriever:
         full_text = "\n".join(text_parts)
         # Heuristic: find Methods section
         methods_markers = [
-            "methods", "simulation details", "computational details",
-            "simulation protocol", "molecular dynamics simulation",
-            "simulation setup", "computational methods",
+            "methods",
+            "simulation details",
+            "computational details",
+            "simulation protocol",
+            "molecular dynamics simulation",
+            "simulation setup",
+            "computational methods",
         ]
         lower = full_text.lower()
         best_start = 0
@@ -219,7 +227,7 @@ class MDSettingsExtractor:
         self,
         paper_text: str,
         paper_title: str = "",
-        method_hint: Optional[str] = None,
+        method_hint: str | None = None,
     ) -> dict[str, Any]:
         """Send paper text to Claude and extract MD simulation parameters.
 
@@ -240,9 +248,7 @@ class MDSettingsExtractor:
         except Exception as exc:
             return {"error": f"Claude API call failed: {exc}"}
 
-        raw_text = "".join(
-            block.text for block in response.content if hasattr(block, "text")
-        )
+        raw_text = "".join(block.text for block in response.content if hasattr(block, "text"))
 
         # Extract JSON from response (may be wrapped in markdown code block)
         json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
@@ -275,8 +281,9 @@ class MDSettingsExtractor:
           {output_dir}/{config_name}/method.yaml       — method-specific params
           {output_dir}/{config_name}/cvs.yaml          — collective variables
         """
-        from md_agent.config.schemas import validate_extracted_settings
         from omegaconf import OmegaConf
+
+        from md_agent.config.schemas import validate_extracted_settings
 
         is_valid, errors = validate_extracted_settings(settings)
         output = Path(output_dir) / config_name

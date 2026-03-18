@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import wandb
 
@@ -16,8 +16,8 @@ from md_agent.utils.parsers import (
     parse_gromacs_log_progress,
 )
 
-
 # ── Background monitor ─────────────────────────────────────────────────
+
 
 class MDMonitor:
     """Daemon thread that periodically tails MD output files and logs to wandb.
@@ -35,9 +35,9 @@ class MDMonitor:
         self,
         log_file: str,
         edr_file: str,
-        colvar_file: Optional[str] = None,
-        hills_file: Optional[str] = None,
-        energy_terms: Optional[list[str]] = None,
+        colvar_file: str | None = None,
+        hills_file: str | None = None,
+        energy_terms: list[str] | None = None,
         poll_interval_s: float = 30.0,
         dt: float = 0.002,  # ps — used to convert COLVAR time→step
     ) -> None:
@@ -45,14 +45,12 @@ class MDMonitor:
         self.edr_file = str(edr_file)
         self.colvar_file = str(colvar_file) if colvar_file else None
         self.hills_file = str(hills_file) if hills_file else None
-        self.energy_terms = energy_terms or [
-            "Potential", "Kinetic En.", "Temperature", "Pressure"
-        ]
+        self.energy_terms = energy_terms or ["Potential", "Kinetic En.", "Temperature", "Pressure"]
         self.poll_interval = poll_interval_s
         self.dt = dt
 
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
         # Bookmarks
         self._last_edr_step: int = 0
@@ -152,20 +150,21 @@ class MDMonitor:
 
 # ── Singleton monitor handle ───────────────────────────────────────────
 
-_active_monitor: Optional[MDMonitor] = None
+_active_monitor: MDMonitor | None = None
 
 
 # ── Tool functions (called by the Claude agent via tool dispatch) ───────
+
 
 def wandb_init_run(
     project: str,
     run_name: str,
     config: dict[str, Any],
-    entity: Optional[str] = None,
-    tags: Optional[list[str]] = None,
+    entity: str | None = None,
+    tags: list[str] | None = None,
     notes: str = "",
     resume: str = "auto",
-    input_files: Optional[list[str]] = None,
+    input_files: list[str] | None = None,
 ) -> dict[str, Any]:
     """Initialize a wandb run and log input files as an Artifact."""
     run = wandb.init(
@@ -228,9 +227,9 @@ def wandb_log_colvar(
 def wandb_start_background_monitor(
     log_file: str,
     edr_file: str,
-    colvar_file: Optional[str] = None,
-    hills_file: Optional[str] = None,
-    energy_terms: Optional[list[str]] = None,
+    colvar_file: str | None = None,
+    hills_file: str | None = None,
+    energy_terms: list[str] | None = None,
     poll_interval_s: float = 30.0,
     dt: float = 0.002,
 ) -> dict[str, Any]:

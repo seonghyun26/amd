@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import anthropic
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from md_agent.config.hydra_utils import (
-    config_from_extracted_settings,
     generate_mdp_from_config,
     load_config,
     save_config,
@@ -95,12 +94,12 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "mdp_file":        {"type": "string"},
-                "topology_file":   {"type": "string"},
+                "mdp_file": {"type": "string"},
+                "topology_file": {"type": "string"},
                 "coordinate_file": {"type": "string"},
-                "output_tpr":      {"type": "string"},
-                "index_file":      {"type": ["string", "null"], "default": None},
-                "max_warnings":    {"type": "integer", "default": 0},
+                "output_tpr": {"type": "string"},
+                "index_file": {"type": ["string", "null"], "default": None},
+                "max_warnings": {"type": "integer", "default": 0},
             },
             "required": ["mdp_file", "topology_file", "coordinate_file", "output_tpr"],
         },
@@ -115,14 +114,17 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tpr_file":      {"type": "string"},
-                "output_prefix": {"type": "string", "description": "deffnm prefix for all output files"},
-                "plumed_file":   {"type": ["string", "null"], "default": None},
-                "n_cores":       {"type": "integer", "default": 1},
-                "gpu_id":        {"type": ["string", "null"], "default": None},
-                "append":        {"type": "boolean", "default": False},
-                "cpt_file":      {"type": ["string", "null"], "default": None},
-                "extra_flags":   {"type": "array", "items": {"type": "string"}, "default": []},
+                "tpr_file": {"type": "string"},
+                "output_prefix": {
+                    "type": "string",
+                    "description": "deffnm prefix for all output files",
+                },
+                "plumed_file": {"type": ["string", "null"], "default": None},
+                "n_cores": {"type": "integer", "default": 1},
+                "gpu_id": {"type": ["string", "null"], "default": None},
+                "append": {"type": "boolean", "default": False},
+                "cpt_file": {"type": ["string", "null"], "default": None},
+                "extra_flags": {"type": "array", "items": {"type": "string"}, "default": []},
             },
             "required": ["tpr_file", "output_prefix"],
         },
@@ -144,9 +146,9 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "subcommand": {"type": "string"},
-                "args":       {"type": "array", "items": {"type": "string"}},
+                "args": {"type": "array", "items": {"type": "string"}},
                 "stdin_text": {"type": ["string", "null"], "default": None},
-                "work_dir":   {"type": "string", "default": "."},
+                "work_dir": {"type": "string", "default": "."},
             },
             "required": ["subcommand", "args"],
         },
@@ -160,11 +162,23 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "input_tpr":   {"type": "string", "description": "Path to the existing .tpr file"},
-                "output_tpr":  {"type": "string", "description": "Path for the new .tpr file"},
-                "extend_time": {"type": ["number", "null"], "default": None, "description": "Additional time in ps"},
-                "nsteps":      {"type": ["integer", "null"], "default": None, "description": "New total number of steps"},
-                "run_time":    {"type": ["number", "null"], "default": None, "description": "New total run time in ps"},
+                "input_tpr": {"type": "string", "description": "Path to the existing .tpr file"},
+                "output_tpr": {"type": "string", "description": "Path for the new .tpr file"},
+                "extend_time": {
+                    "type": ["number", "null"],
+                    "default": None,
+                    "description": "Additional time in ps",
+                },
+                "nsteps": {
+                    "type": ["integer", "null"],
+                    "default": None,
+                    "description": "New total number of steps",
+                },
+                "run_time": {
+                    "type": ["number", "null"],
+                    "default": None,
+                    "description": "New total run time in ps",
+                },
             },
             "required": ["input_tpr", "output_tpr"],
         },
@@ -176,29 +190,29 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "output_path":   {"type": "string"},
-                "cvs":           {
+                "output_path": {"type": "string"},
+                "cvs": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "name":      {"type": "string"},
-                            "type":      {"type": "string"},
-                            "atoms":     {"type": "array", "items": {"type": "integer"}},
+                            "name": {"type": "string"},
+                            "type": {"type": "string"},
+                            "atoms": {"type": "array", "items": {"type": "integer"}},
                             "reference": {"type": ["string", "null"]},
                             "rmsd_type": {"type": "string", "default": "OPTIMAL"},
                         },
                         "required": ["name", "type"],
                     },
                 },
-                "hills_height":   {"type": "number"},
-                "hills_sigma":    {"type": "array", "items": {"type": "number"}},
-                "hills_pace":     {"type": "integer"},
-                "biasfactor":     {"type": ["number", "null"], "default": None},
-                "temperature":    {"type": "number", "default": 300.0},
-                "hills_file":     {"type": "string", "default": "HILLS"},
-                "colvar_file":    {"type": "string", "default": "COLVAR"},
-                "colvar_stride":  {"type": "integer", "default": 100},
+                "hills_height": {"type": "number"},
+                "hills_sigma": {"type": "array", "items": {"type": "number"}},
+                "hills_pace": {"type": "integer"},
+                "biasfactor": {"type": ["number", "null"], "default": None},
+                "temperature": {"type": "number", "default": 300.0},
+                "hills_file": {"type": "string", "default": "HILLS"},
+                "colvar_file": {"type": "string", "default": "COLVAR"},
+                "colvar_stride": {"type": "integer", "default": 100},
             },
             "required": ["output_path", "cvs", "hills_height", "hills_sigma", "hills_pace"],
         },
@@ -209,12 +223,12 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "output_path":    {"type": "string"},
-                "cv_definition":  {"type": "object"},
-                "window_center":  {"type": "number"},
+                "output_path": {"type": "string"},
+                "cv_definition": {"type": "object"},
+                "window_center": {"type": "number"},
                 "force_constant": {"type": "number"},
-                "colvar_file":    {"type": "string", "default": "COLVAR"},
-                "colvar_stride":  {"type": "integer", "default": 100},
+                "colvar_file": {"type": "string", "default": "COLVAR"},
+                "colvar_stride": {"type": "integer", "default": 100},
             },
             "required": ["output_path", "cv_definition", "window_center", "force_constant"],
         },
@@ -225,17 +239,23 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "output_path":    {"type": "string"},
-                "cv_definition":  {"type": "object"},
-                "initial_value":  {"type": "number"},
-                "final_value":    {"type": "number"},
+                "output_path": {"type": "string"},
+                "cv_definition": {"type": "object"},
+                "initial_value": {"type": "number"},
+                "final_value": {"type": "number"},
                 "force_constant": {"type": "number"},
-                "total_steps":    {"type": "integer"},
-                "colvar_file":    {"type": "string", "default": "COLVAR"},
-                "colvar_stride":  {"type": "integer", "default": 100},
+                "total_steps": {"type": "integer"},
+                "colvar_file": {"type": "string", "default": "COLVAR"},
+                "colvar_stride": {"type": "integer", "default": 100},
             },
-            "required": ["output_path", "cv_definition", "initial_value", "final_value",
-                         "force_constant", "total_steps"],
+            "required": [
+                "output_path",
+                "cv_definition",
+                "initial_value",
+                "final_value",
+                "force_constant",
+                "total_steps",
+            ],
         },
     },
     {
@@ -245,7 +265,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "plumed_file": {"type": "string"},
-                "gro_file":    {"type": ["string", "null"], "default": None},
+                "gro_file": {"type": ["string", "null"], "default": None},
             },
             "required": ["plumed_file"],
         },
@@ -256,10 +276,10 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "hills_file":    {"type": "string"},
+                "hills_file": {"type": "string"},
                 "output_prefix": {"type": "string", "default": "fes"},
-                "mintozero":     {"type": "boolean", "default": True},
-                "stride":        {"type": ["integer", "null"], "default": None},
+                "mintozero": {"type": "boolean", "default": True},
+                "stride": {"type": ["integer", "null"], "default": None},
             },
             "required": ["hills_file"],
         },
@@ -271,14 +291,14 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "project":      {"type": "string"},
-                "run_name":     {"type": "string"},
-                "config":       {"type": "object"},
-                "entity":       {"type": ["string", "null"], "default": None},
-                "tags":         {"type": "array", "items": {"type": "string"}, "default": []},
-                "notes":        {"type": "string", "default": ""},
-                "resume":       {"type": "string", "default": "auto"},
-                "input_files":  {"type": "array", "items": {"type": "string"}, "default": []},
+                "project": {"type": "string"},
+                "run_name": {"type": "string"},
+                "config": {"type": "object"},
+                "entity": {"type": ["string", "null"], "default": None},
+                "tags": {"type": "array", "items": {"type": "string"}, "default": []},
+                "notes": {"type": "string", "default": ""},
+                "resume": {"type": "string", "default": "auto"},
+                "input_files": {"type": "array", "items": {"type": "string"}, "default": []},
             },
             "required": ["project", "run_name", "config"],
         },
@@ -289,9 +309,9 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "edr_file":     {"type": "string"},
+                "edr_file": {"type": "string"},
                 "energy_terms": {"type": "array", "items": {"type": "string"}},
-                "step_offset":  {"type": "integer", "default": 0},
+                "step_offset": {"type": "integer", "default": 0},
             },
             "required": ["edr_file", "energy_terms"],
         },
@@ -303,9 +323,9 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "colvar_file": {"type": "string"},
-                "step_col":    {"type": "string", "default": "time"},
-                "from_step":   {"type": "integer", "default": 0},
-                "dt":          {"type": "number", "default": 0.002},
+                "step_col": {"type": "string", "default": "time"},
+                "from_step": {"type": "integer", "default": 0},
+                "dt": {"type": "number", "default": 0.002},
             },
             "required": ["colvar_file"],
         },
@@ -319,13 +339,13 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "log_file":        {"type": "string"},
-                "edr_file":        {"type": "string"},
-                "colvar_file":     {"type": ["string", "null"], "default": None},
-                "hills_file":      {"type": ["string", "null"], "default": None},
-                "energy_terms":    {"type": "array", "items": {"type": "string"}, "default": []},
+                "log_file": {"type": "string"},
+                "edr_file": {"type": "string"},
+                "colvar_file": {"type": ["string", "null"], "default": None},
+                "hills_file": {"type": ["string", "null"], "default": None},
+                "energy_terms": {"type": "array", "items": {"type": "string"}, "default": []},
                 "poll_interval_s": {"type": "number", "default": 30.0},
-                "dt":              {"type": "number", "default": 0.002},
+                "dt": {"type": "number", "default": 0.002},
             },
             "required": ["log_file", "edr_file"],
         },
@@ -358,7 +378,7 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "output_path":  {"type": "string"},
+                "output_path": {"type": "string"},
                 "extra_params": {"type": "object", "default": {}},
             },
             "required": ["output_path"],
@@ -370,7 +390,7 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "config":      {"type": "object"},
+                "config": {"type": "object"},
                 "output_path": {"type": "string"},
             },
             "required": ["config", "output_path"],
@@ -394,7 +414,7 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "query":       {"type": "string"},
+                "query": {"type": "string"},
                 "max_results": {"type": "integer", "default": 10},
             },
             "required": ["query"],
@@ -417,7 +437,7 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "url":         {"type": "string"},
+                "url": {"type": "string"},
                 "output_path": {"type": "string"},
             },
             "required": ["url", "output_path"],
@@ -429,9 +449,9 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "pdf_path":   {"type": "string"},
-                "pages":      {"type": ["array", "null"], "items": {"type": "integer"}, "default": None},
-                "max_chars":  {"type": "integer", "default": 50000},
+                "pdf_path": {"type": "string"},
+                "pages": {"type": ["array", "null"], "items": {"type": "integer"}, "default": None},
+                "max_chars": {"type": "integer", "default": 50000},
             },
             "required": ["pdf_path"],
         },
@@ -445,7 +465,7 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "paper_text":  {"type": "string"},
+                "paper_text": {"type": "string"},
                 "paper_title": {"type": "string", "default": ""},
                 "method_hint": {"type": ["string", "null"], "default": None},
             },
@@ -461,8 +481,8 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "settings":    {"type": "object"},
-                "output_dir":  {"type": "string"},
+                "settings": {"type": "object"},
+                "output_dir": {"type": "string"},
                 "config_name": {"type": "string", "default": "reproduced_config"},
             },
             "required": ["settings", "output_dir"],
@@ -477,7 +497,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "file_path": {"type": "string"},
                 "max_lines": {"type": "integer", "default": 500},
-                "tail":      {"type": "boolean", "default": False},
+                "tail": {"type": "boolean", "default": False},
             },
             "required": ["file_path"],
         },
@@ -489,7 +509,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "directory": {"type": "string"},
-                "pattern":   {"type": "string", "default": "*"},
+                "pattern": {"type": "string", "default": "*"},
                 "recursive": {"type": "boolean", "default": False},
             },
             "required": ["directory"],
@@ -533,6 +553,7 @@ TOOLS: list[dict[str, Any]] = [
 
 # ── Agent ──────────────────────────────────────────────────────────────
 
+
 class MDAgent:
     """Claude Opus 4.6 agent with 25 MD tools and adaptive thinking."""
 
@@ -571,37 +592,37 @@ class MDAgent:
 
         return {
             # GROMACS
-            "run_grompp":        gmx.grompp,
-            "run_mdrun":         gmx.mdrun,
-            "wait_mdrun":        gmx.wait_mdrun,
-            "run_gmx_command":   gmx.run_gmx_command,
-            "convert_tpr":       gmx.convert_tpr,
+            "run_grompp": gmx.grompp,
+            "run_mdrun": gmx.mdrun,
+            "wait_mdrun": gmx.wait_mdrun,
+            "run_gmx_command": gmx.run_gmx_command,
+            "convert_tpr": gmx.convert_tpr,
             # PLUMED
             "generate_plumed_metadynamics": plumed.generate_metadynamics,
-            "generate_plumed_umbrella":     plumed.generate_umbrella,
-            "generate_plumed_steered":      plumed.generate_steered,
-            "validate_plumed_input":        plumed.validate_plumed_input,
-            "analyze_hills":                plumed.analyze_hills,
+            "generate_plumed_umbrella": plumed.generate_umbrella,
+            "generate_plumed_steered": plumed.generate_steered,
+            "validate_plumed_input": plumed.validate_plumed_input,
+            "analyze_hills": plumed.analyze_hills,
             # WandB
-            "wandb_init_run":                wandb_init_run,
-            "wandb_log_from_edr":           wandb_log_from_edr,
-            "wandb_log_colvar":             wandb_log_colvar,
+            "wandb_init_run": wandb_init_run,
+            "wandb_log_from_edr": wandb_log_from_edr,
+            "wandb_log_colvar": wandb_log_colvar,
             "wandb_start_background_monitor": wandb_start_background_monitor,
-            "wandb_stop_monitor":           wandb_stop_monitor,
+            "wandb_stop_monitor": wandb_stop_monitor,
             # Config
-            "load_config":              load_config,
+            "load_config": load_config,
             "generate_mdp_from_config": _generate_mdp,
-            "save_config":              save_config,
-            "validate_config":          _validate_config,
+            "save_config": save_config,
+            "validate_config": _validate_config,
             # Paper
-            "search_semantic_scholar":            pr.search_semantic_scholar,
-            "fetch_arxiv_paper":                  pr.fetch_arxiv_paper,
-            "download_pdf":                       pr.download_pdf,
-            "extract_text_from_pdf":              pr.extract_text_from_pdf,
-            "extract_md_settings_from_text":      se.extract_md_settings_from_text,
+            "search_semantic_scholar": pr.search_semantic_scholar,
+            "fetch_arxiv_paper": pr.fetch_arxiv_paper,
+            "download_pdf": pr.download_pdf,
+            "extract_text_from_pdf": pr.extract_text_from_pdf,
+            "extract_md_settings_from_text": se.extract_md_settings_from_text,
             "create_config_from_extracted_settings": se.create_config_from_extracted_settings,
             # File
-            "read_file":  read_file,
+            "read_file": read_file,
             "list_files": list_files,
             # Specialist agents
             "delegate_to_specialist": self._delegate_to_specialist,
@@ -612,12 +633,15 @@ class MDAgent:
         try:
             if agent_type == "paper_config":
                 from md_agent.agents.paper_agent import PaperConfigAgent
+
                 return {"result": PaperConfigAgent().run(task)}
             elif agent_type == "analysis":
                 from md_agent.agents.analysis_agent import AnalysisAgent
+
                 return {"result": AnalysisAgent(str(self.work_dir)).run(task)}
             elif agent_type == "cv_suggester":
                 from md_agent.agents.cv_agent import CVAgent
+
                 return {"result": CVAgent(str(self.work_dir)).run(task)}
             else:
                 return {"error": f"Unknown agent type: {agent_type}"}
@@ -665,11 +689,13 @@ class MDAgent:
                 if block.type != "tool_use":
                     continue
                 result = self._execute_tool(block.name, block.input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(result, default=str),
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, default=str),
+                    }
+                )
 
             self._messages.append({"role": "user", "content": tool_results})
 
@@ -711,11 +737,17 @@ class MDAgent:
                 self._messages.append({"role": "assistant", "content": final_message.content})
 
                 if final_message.stop_reason == "end_turn":
-                    yield {"type": "agent_done", "final_text": self._extract_text(final_message.content)}
+                    yield {
+                        "type": "agent_done",
+                        "final_text": self._extract_text(final_message.content),
+                    }
                     return
 
                 if final_message.stop_reason != "tool_use":
-                    yield {"type": "agent_done", "final_text": self._extract_text(final_message.content)}
+                    yield {
+                        "type": "agent_done",
+                        "final_text": self._extract_text(final_message.content),
+                    }
                     return
 
                 # Execute all tool calls in this response
@@ -736,11 +768,13 @@ class MDAgent:
                         "tool_name": block.name,
                         "result": result,
                     }
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, default=str),
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(result, default=str),
+                        }
+                    )
 
                 self._messages.append({"role": "user", "content": tool_results})
 
@@ -753,6 +787,5 @@ class MDAgent:
     @staticmethod
     def _extract_text(content: list) -> str:
         return " ".join(
-            block.text for block in content
-            if hasattr(block, "text") and block.type == "text"
+            block.text for block in content if hasattr(block, "text") and block.type == "text"
         )

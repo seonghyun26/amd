@@ -30,11 +30,13 @@ def _get_extractor() -> MDSettingsExtractor:
     global _extractor
     if _extractor is None:
         import anthropic
+
         _extractor = MDSettingsExtractor(anthropic.Anthropic())
     return _extractor
 
 
 # ── Tools ──────────────────────────────────────────────────────────────
+
 
 @tool
 def search_papers(query: str) -> str:
@@ -83,14 +85,15 @@ TOOLS = [search_papers, fetch_arxiv_paper, download_and_read_paper, extract_md_s
 
 # ── RCSB PDB tools ─────────────────────────────────────────────────────
 
+
 @tool
 def search_rcsb_pdb(query: str) -> str:
     """Search the RCSB Protein Data Bank for protein structures matching a keyword query.
     Returns a list of PDB IDs with titles and organism information.
     Use this to find relevant structures before downloading them with download_pdb_to_session.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     search_query = {
         "query": {
@@ -144,6 +147,7 @@ def _make_config_tools(work_dir: str, session):
             if not isinstance(updates, dict):
                 return json.dumps({"error": "updates_json must be a JSON object"})
             from omegaconf import OmegaConf
+
             cfg = session.agent.cfg
             applied: list[str] = []
             for key, value in updates.items():
@@ -157,8 +161,11 @@ def _make_config_tools(work_dir: str, session):
             OmegaConf.save(cfg, str(cfg_path))
             # Regenerate md.mdp from updated config
             from md_agent.config.hydra_utils import generate_mdp_from_config
+
             generate_mdp_from_config(cfg, str(wd / "md.mdp"))
-            return json.dumps({"updated": True, "applied_keys": applied, "config_path": str(cfg_path)})
+            return json.dumps(
+                {"updated": True, "applied_keys": applied, "config_path": str(cfg_path)}
+            )
         except Exception as e:
             return json.dumps({"error": str(e)})
 
@@ -225,6 +232,7 @@ After extracting settings from a paper, offer to apply them:
 
 
 # ── Agent class ────────────────────────────────────────────────────────
+
 
 class PaperConfigAgent:
     """LangChain specialist agent that extracts MD settings from papers and downloads PDB files."""

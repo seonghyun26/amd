@@ -13,8 +13,8 @@ from langchain_core.tools import tool
 
 from md_agent.agents.base import build_executor, stream_executor, sync_run
 
-
 # ── Tool factory ────────────────────────────────────────────────────────
+
 
 def _make_tools(work_dir: str):
     wd = Path(work_dir)
@@ -52,13 +52,15 @@ def _make_tools(work_dir: str):
                         res_name = line[17:20].strip()
                         res_num = line[22:26].strip()
                         element = line[76:78].strip() if len(line) > 76 else ""
-                        atoms.append({
-                            "index": atom_idx,
-                            "atom": atom_name,
-                            "residue": res_name,
-                            "resnum": res_num,
-                            "element": element,
-                        })
+                        atoms.append(
+                            {
+                                "index": atom_idx,
+                                "atom": atom_name,
+                                "residue": res_name,
+                                "resnum": res_num,
+                                "element": element,
+                            }
+                        )
                     except Exception:
                         continue
         elif ext == ".gro":
@@ -70,22 +72,22 @@ def _make_tools(work_dir: str):
                         res_name = line[5:10].strip()
                         atom_name = line[10:15].strip()
                         atom_idx = int(line[15:20])
-                        atoms.append({
-                            "index": atom_idx,
-                            "atom": atom_name,
-                            "residue": res_name,
-                            "resnum": str(res_num),
-                            "element": atom_name[0] if atom_name else "",
-                        })
+                        atoms.append(
+                            {
+                                "index": atom_idx,
+                                "atom": atom_name,
+                                "residue": res_name,
+                                "resnum": str(res_num),
+                                "element": atom_name[0] if atom_name else "",
+                            }
+                        )
                     except (ValueError, IndexError):
                         continue
         if not atoms:
             return "No atoms parsed — check file format."
         # truncate for display
         n = len(atoms)
-        sample = atoms[:50] + (
-            [{"index": "...", "note": f"{n - 50} more atoms"}] if n > 50 else []
-        )
+        sample = atoms[:50] + ([{"index": "...", "note": f"{n - 50} more atoms"}] if n > 50 else [])
         return f"Total atoms: {n}\n" + json.dumps(sample, indent=2)
 
     @tool
@@ -118,7 +120,6 @@ def _make_tools(work_dir: str):
                     try:
                         res_num = int(line[0:5])
                         res_name = line[5:10].strip()
-                        atom_name = line[10:15].strip()
                         atom_idx = int(line[15:20])
                         key = (res_name, str(res_num), "")
                         residues.setdefault(key, [])
@@ -164,7 +165,6 @@ def _make_tools(work_dir: str):
         """Generate a PLUMED RMSD CV relative to a reference structure.
         atom_group: 'backbone', 'alpha', or 'heavy'. Reference file must be in work_dir.
         """
-        type_map = {"backbone": "OPTIMAL", "alpha": "OPTIMAL", "heavy": "OPTIMAL"}
         return (
             f"{name}: RMSD REFERENCE={reference_file} TYPE=OPTIMAL\n"
             f"# RMSD in nm from the reference structure. Use for folding/unfolding studies."
@@ -238,6 +238,7 @@ def _make_session_config_tools(work_dir: str, session):
             if not isinstance(updates, dict):
                 return json.dumps({"error": "updates_json must be a JSON object"})
             from omegaconf import OmegaConf
+
             cfg = session.agent.cfg
             applied: list[str] = []
             for key, value in updates.items():
@@ -293,6 +294,7 @@ PRINT ARG=phi,psi,metad.bias STRIDE=100 FILE=COLVAR
 
 
 # ── Agent class ────────────────────────────────────────────────────────
+
 
 class CVAgent:
     """LangChain specialist agent for CV selection and PLUMED definition generation."""

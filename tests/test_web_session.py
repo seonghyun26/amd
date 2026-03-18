@@ -1,16 +1,15 @@
 """Tests for web backend session manager — unit tests that don't require GROMACS."""
 
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from web.backend.session_manager import (
-    _sessions,
     Session,
-    get_session,
-    list_sessions,
+    _sessions,
     delete_session,
+    get_session,
     infer_run_status_from_disk,
+    list_sessions,
 )
 
 
@@ -84,11 +83,7 @@ class TestInferRunStatus:
         cfg_path.write_text("method:\n  nsteps: 1000\n")
         # Write a log that parse_gromacs_log_progress can read
         # The parser looks for "Step           Time" table format
-        log.write_text(
-            "           Step           Time\n"
-            "           1000        2.00000\n"
-            "\n"
-        )
+        log.write_text("           Step           Time\n" "           1000        2.00000\n" "\n")
         result = infer_run_status_from_disk(tmp_path, tmp_path / "data")
         # May return "finished" or None depending on parser — both acceptable
         assert result in ("finished", None)

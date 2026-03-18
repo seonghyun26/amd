@@ -62,13 +62,14 @@ async def list_session_files(session_id: str, pattern: str = "*", recursive: boo
         raise HTTPException(404, "Session not found")
     work = Path(session.work_dir).resolve()
     _migrate_legacy_config(work)
-    files = [str(Path(f).resolve()) for f in list_files(session.work_dir, pattern=pattern, recursive=recursive)]
+    files = [
+        str(Path(f).resolve())
+        for f in list_files(session.work_dir, pattern=pattern, recursive=recursive)
+    ]
     # Hide the archive subfolder and GROMACS #...# backup files
     archive_prefix = str(_session_root(work) / "archive") + "/"
     files = [
-        f for f in files
-        if not f.startswith(archive_prefix)
-        and not Path(f).name.startswith("#")
+        f for f in files if not f.startswith(archive_prefix) and not Path(f).name.startswith("#")
     ]
     return {"files": files, "work_dir": session.work_dir}
 
@@ -99,12 +100,16 @@ async def download_file(session_id: str, path: str):
     # Read the file content as a snapshot to avoid Content-Length mismatch
     # when GROMACS is actively writing to the file.
     import mimetypes
+
     content = target.read_bytes()
     media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
     return StreamingResponse(
         iter([content]),
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{target.name}"', "Content-Length": str(len(content))},
+        headers={
+            "Content-Disposition": f'attachment; filename="{target.name}"',
+            "Content-Length": str(len(content)),
+        },
     )
 
 

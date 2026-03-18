@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_anthropic import ChatAnthropic
@@ -26,11 +25,13 @@ def build_executor(
         max_tokens=8192,
         streaming=True,
     )
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),
+        ]
+    )
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(
         agent=agent,
@@ -77,8 +78,9 @@ async def stream_executor(
                     "type": "tool_start",
                     "tool_use_id": tool_use_id,
                     "tool_name": event["name"],
-                    "tool_input": raw_input if isinstance(raw_input, dict)
-                                 else {"input": str(raw_input)},
+                    "tool_input": raw_input
+                    if isinstance(raw_input, dict)
+                    else {"input": str(raw_input)},
                 }
 
             elif kind == "on_tool_end":

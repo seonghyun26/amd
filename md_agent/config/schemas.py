@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any
 
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ── Collective Variable schemas ────────────────────────────────────────
 
@@ -14,12 +14,12 @@ CV_TYPES = {"DISTANCE", "TORSION", "ANGLE", "RMSD", "COORDINATION"}
 class CVSchema(BaseModel):
     name: str
     type: str
-    atoms: Optional[List[int]] = None
-    reference: Optional[str] = None       # for RMSD
+    atoms: list[int] | None = None
+    reference: str | None = None  # for RMSD
     rmsd_type: str = "OPTIMAL"
-    groupa: Optional[List[int]] = None    # for COORDINATION
-    groupb: Optional[List[int]] = None
-    r0: Optional[float] = None
+    groupa: list[int] | None = None  # for COORDINATION
+    groupb: list[int] | None = None
+    r0: float | None = None
 
     @field_validator("type")
     @classmethod
@@ -29,7 +29,7 @@ class CVSchema(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_required_fields(self) -> "CVSchema":
+    def check_required_fields(self) -> CVSchema:
         if self.type in {"DISTANCE", "TORSION", "ANGLE"} and not self.atoms:
             raise ValueError(f"CV type '{self.type}' requires 'atoms' list")
         if self.type == "RMSD" and not self.reference:
@@ -42,17 +42,18 @@ class CVSchema(BaseModel):
 
 # ── Method schemas ─────────────────────────────────────────────────────
 
+
 class MetadynamicsSchema(BaseModel):
     _target_name: str = "metadynamics"
     hills_height: float = Field(gt=0, description="Gaussian height in kJ/mol")
-    hills_sigma: List[float] = Field(min_length=1)
+    hills_sigma: list[float] = Field(min_length=1)
     hills_pace: int = Field(gt=0)
-    biasfactor: Optional[float] = Field(default=None, gt=1)
+    biasfactor: float | None = Field(default=None, gt=1)
     temperature: float = Field(gt=0)
     nsteps: int = Field(gt=0)
 
     @model_validator(mode="after")
-    def sigma_count_matches_cvs(self) -> "MetadynamicsSchema":
+    def sigma_count_matches_cvs(self) -> MetadynamicsSchema:
         # sigma list length is validated against actual CVs in PlumedGenerator
         return self
 
@@ -95,9 +96,9 @@ class GromacsSchema(BaseModel):
     rlist: float = Field(gt=0, description="nm")
     rcoulomb: float = Field(gt=0, description="nm")
     rvdw: float = Field(gt=0, description="nm")
-    gen_vel: Optional[str] = None
-    gen_seed: Optional[int] = None
-    continuation: Optional[str] = None
+    gen_vel: str | None = None
+    gen_seed: int | None = None
+    continuation: str | None = None
 
     @field_validator("integrator")
     @classmethod
@@ -130,6 +131,7 @@ class GromacsSchema(BaseModel):
 
 # ── Extracted paper settings schema ───────────────────────────────────
 
+
 class ExtractedPaperSettings(BaseModel):
     """Schema for MD settings extracted from a paper by Claude."""
 
@@ -138,7 +140,7 @@ class ExtractedPaperSettings(BaseModel):
     plumed: dict[str, Any] = Field(default_factory=dict)
     system: dict[str, Any] = Field(default_factory=dict)
     notes: str = ""
-    confidence: str = "medium"   # low | medium | high
+    confidence: str = "medium"  # low | medium | high
 
     @field_validator("method")
     @classmethod

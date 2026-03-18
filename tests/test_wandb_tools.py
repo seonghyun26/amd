@@ -1,8 +1,5 @@
 """Tests for WandB tools and MDMonitor."""
 
-import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,11 +9,7 @@ from md_agent.utils.parsers import count_hills, parse_colvar_file
 class TestParseColvar:
     def test_basic_parsing(self, tmp_path):
         colvar = tmp_path / "COLVAR"
-        colvar.write_text(
-            "#! FIELDS time d1 phi\n"
-            "0.000 1.234 -2.345\n"
-            "0.002 1.250 -2.300\n"
-        )
+        colvar.write_text("#! FIELDS time d1 phi\n" "0.000 1.234 -2.345\n" "0.002 1.250 -2.300\n")
         rows = parse_colvar_file(str(colvar))
         assert len(rows) == 2
         assert rows[0]["time"] == pytest.approx(0.0)
@@ -24,12 +17,7 @@ class TestParseColvar:
 
     def test_from_line_bookmark(self, tmp_path):
         colvar = tmp_path / "COLVAR"
-        colvar.write_text(
-            "#! FIELDS time d1\n"
-            "0.000 1.0\n"
-            "0.002 1.1\n"
-            "0.004 1.2\n"
-        )
+        colvar.write_text("#! FIELDS time d1\n" "0.000 1.0\n" "0.002 1.1\n" "0.004 1.2\n")
         rows = parse_colvar_file(str(colvar), from_line=2)
         assert len(rows) == 1
         assert rows[0]["d1"] == pytest.approx(1.2)

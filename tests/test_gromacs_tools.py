@@ -1,6 +1,5 @@
 """Tests for GROMACSRunner."""
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +23,7 @@ def _mock_proc(returncode: int, stdout: str = "", stderr: str = "") -> MagicMock
 class TestGrompp:
     def test_success(self, runner, tmp_path):
         tpr = str(tmp_path / "md.tpr")
-        with patch("subprocess.Popen", return_value=_mock_proc(0, stderr="")) as mock_popen:
+        with patch("subprocess.Popen", return_value=_mock_proc(0, stderr="")):
             result = runner.grompp(
                 mdp_file="prod.mdp",
                 topology_file="topol.top",
@@ -48,7 +47,6 @@ class TestGrompp:
 
 class TestMdrun:
     def test_starts_nonblocking(self, runner, tmp_path):
-        tpr = str(tmp_path / "md.tpr")
         (tmp_path / "md.tpr").touch()
         proc = MagicMock()
         proc.pid = 12345
@@ -108,9 +106,7 @@ class TestConvertTpr:
     def test_nsteps(self, runner, tmp_path):
         (tmp_path / "md.tpr").touch()
         with patch("subprocess.Popen", return_value=_mock_proc(0)):
-            result = runner.convert_tpr(
-                input_tpr="md.tpr", output_tpr="md_ext.tpr", nsteps=100000
-            )
+            result = runner.convert_tpr(input_tpr="md.tpr", output_tpr="md_ext.tpr", nsteps=100000)
         assert result["success"] is True
 
     def test_missing_tpr_returns_error(self, runner, tmp_path):

@@ -92,6 +92,7 @@ async def generate_session_files(session_id: str):
     # ── md.mdp — GROMACS parameter file (converted from config) ──────────
     try:
         from md_agent.config.hydra_utils import generate_mdp_from_config
+
         mdp_path = str(work_dir / "md.mdp")
         generate_mdp_from_config(cfg, mdp_path)
         generated.append("md.mdp")
@@ -105,12 +106,14 @@ async def generate_session_files(session_id: str):
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     except Exception:
         meta = {}
-    meta.update({
-        "session_id": session_id,
-        "nickname": session.nickname,
-        "work_dir": session.work_dir,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    meta.update(
+        {
+            "session_id": session_id,
+            "nickname": session.nickname,
+            "work_dir": session.work_dir,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+    )
     meta.setdefault("status", "active")
     try:
         meta_path.write_text(json.dumps(meta, indent=2))
@@ -168,7 +171,9 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
     lines.append("")
 
     # ── MLCV checkpoint (PyTorch model) ──
-    mlcv_checkpoint = str(OmegaConf.select(cfg, "plumed.collective_variables.mlcv_checkpoint") or "")
+    mlcv_checkpoint = str(
+        OmegaConf.select(cfg, "plumed.collective_variables.mlcv_checkpoint") or ""
+    )
     mlcv_n_outputs = OmegaConf.select(cfg, "plumed.collective_variables.mlcv_n_outputs")
     raw_arg_str = ",".join(cv_names)
     if mlcv_checkpoint:
@@ -178,6 +183,7 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         if out_count is None:
             try:
                 import torch
+
                 ckpt_path = str(Path(work_dir) / mlcv_checkpoint) if work_dir else mlcv_checkpoint
                 model = torch.jit.load(ckpt_path, map_location="cpu")
                 model.eval()
@@ -222,7 +228,11 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         sigma_str = ",".join(str(s) for s in sigma_list)
         pace = int(OmegaConf.select(cfg, "method.hills.pace") or 500)
         biasfactor = OmegaConf.select(cfg, "method.hills.biasfactor")
-        temperature = float(OmegaConf.select(cfg, "method.temperature") or OmegaConf.select(cfg, "gromacs.temperature") or 300)
+        temperature = float(
+            OmegaConf.select(cfg, "method.temperature")
+            or OmegaConf.select(cfg, "gromacs.temperature")
+            or 300
+        )
         hills_file = str(OmegaConf.select(cfg, "method.hills.hills_file") or "HILLS")
 
         lines.append("# Metadynamics Bias")
@@ -238,7 +248,9 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         lines.append("  LABEL=metad")
         lines.append("... METAD")
         lines.append("")
-        lines.append(f"PRINT STRIDE={colvar_stride} ARG={print_arg_str},metad.bias FILE={colvar_file}")
+        lines.append(
+            f"PRINT STRIDE={colvar_stride} ARG={print_arg_str},metad.bias FILE={colvar_file}"
+        )
 
     elif method_name == "opes":
         pace = int(OmegaConf.select(cfg, "method.pace") or 500)
@@ -246,7 +258,11 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         # SIGMA must have one value per ARG
         sigma_str = ",".join([str(sigma_val)] * n_bias_args) if n_bias_args > 1 else str(sigma_val)
         barrier = float(OmegaConf.select(cfg, "method.barrier") or 30)
-        temperature = float(OmegaConf.select(cfg, "method.temperature") or OmegaConf.select(cfg, "gromacs.temperature") or 340)
+        temperature = float(
+            OmegaConf.select(cfg, "method.temperature")
+            or OmegaConf.select(cfg, "gromacs.temperature")
+            or 340
+        )
 
         kernels_file = str(OmegaConf.select(cfg, "method.kernels_file") or "KERNELS")
         state_wfile = str(OmegaConf.select(cfg, "method.state_wfile") or "STATE")
@@ -269,7 +285,9 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
             lines.append("  STORE_STATES")
         lines.append("... OPES_METAD")
         lines.append("")
-        lines.append(f"PRINT STRIDE={colvar_stride} ARG={print_arg_str},opes.bias FILE={colvar_file}")
+        lines.append(
+            f"PRINT STRIDE={colvar_stride} ARG={print_arg_str},opes.bias FILE={colvar_file}"
+        )
 
     elif method_name in ("umbrella", "umbrella_sampling"):
         window_center = float(OmegaConf.select(cfg, "method.window_start") or 0.0)
@@ -277,9 +295,13 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         cv_name = cv_names[0] if cv_names else "cv1"
 
         lines.append("# Umbrella Sampling — Harmonic Restraint")
-        lines.append(f"restraint: RESTRAINT ARG={cv_name} AT={window_center} KAPPA={force_constant}")
+        lines.append(
+            f"restraint: RESTRAINT ARG={cv_name} AT={window_center} KAPPA={force_constant}"
+        )
         lines.append("")
-        lines.append(f"PRINT STRIDE={colvar_stride} ARG={cv_name},restraint.bias FILE={colvar_file}")
+        lines.append(
+            f"PRINT STRIDE={colvar_stride} ARG={cv_name},restraint.bias FILE={colvar_file}"
+        )
 
     elif method_name in ("steered", "steered_md"):
         initial = float(OmegaConf.select(cfg, "method.initial_value") or 0)
@@ -297,7 +319,9 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         lines.append("  LABEL=smd")
         lines.append("... MOVINGRESTRAINT")
         lines.append("")
-        lines.append(f"PRINT STRIDE={colvar_stride} ARG={cv_name},smd.bias,smd.force2 FILE={colvar_file}")
+        lines.append(
+            f"PRINT STRIDE={colvar_stride} ARG={cv_name},smd.bias,smd.force2 FILE={colvar_file}"
+        )
 
     lines.append(f"FLUSH STRIDE={colvar_stride * 10}")
     lines.append("")
@@ -314,13 +338,29 @@ async def plumed_preview(session_id: str):
     cfg = session.agent.cfg
     method_name = OmegaConf.select(cfg, "method._target_name") or "plain_md"
 
-    plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
+    plumed_methods = {
+        "metadynamics",
+        "metad",
+        "opes",
+        "umbrella",
+        "umbrella_sampling",
+        "steered",
+        "steered_md",
+    }
     if method_name not in plumed_methods:
-        return {"content": None, "method": method_name, "message": "No PLUMED file needed for this method."}
+        return {
+            "content": None,
+            "method": method_name,
+            "message": "No PLUMED file needed for this method.",
+        }
 
     cvs = _resolve_cvs(cfg)
     if not cvs:
-        return {"content": None, "method": method_name, "message": "No collective variables defined."}
+        return {
+            "content": None,
+            "method": method_name,
+            "message": "No collective variables defined.",
+        }
 
     try:
         content = _build_plumed_content(cfg, cvs, work_dir=str(session.work_dir))
@@ -372,6 +412,7 @@ async def validate_checkpoint(session_id: str, filename: str):
     torch = None
     try:
         import torch as _torch
+
         torch = _torch
     except Exception:
         pass
@@ -385,8 +426,8 @@ async def validate_checkpoint(session_id: str, filename: str):
             "n_inputs": None,
             "n_outputs": None,
             "error": f"PyTorch not available — skipped JIT validation. "
-                     f"Ensure the server runs in the correct conda environment (e.g. 'conda activate amd'). "
-                     f"File size: {size_mb:.1f} MB.",
+            f"Ensure the server runs in the correct conda environment (e.g. 'conda activate amd'). "
+            f"File size: {size_mb:.1f} MB.",
         }
 
     # ── Full validation with torch ──
@@ -406,8 +447,8 @@ async def validate_checkpoint(session_id: str, filename: str):
                     "n_inputs": None,
                     "n_outputs": None,
                     "error": "File is a state_dict, not a TorchScript model. "
-                             "PLUMED requires a JIT-traced/scripted model. "
-                             "Re-export with: torch.jit.save(torch.jit.trace(model, dummy_input), path)",
+                    "PLUMED requires a JIT-traced/scripted model. "
+                    "Re-export with: torch.jit.save(torch.jit.trace(model, dummy_input), path)",
                     "keys": list(state.keys())[:10],
                 }
         except Exception:
@@ -480,6 +521,7 @@ async def validate_checkpoint(session_id: str, filename: str):
 
 # ── Molecule library ───────────────────────────────────────────────────
 
+
 @router.get("/molecules")
 async def get_molecules():
     """Scan data/molecule/ and return available systems with their conformational states."""
@@ -517,7 +559,11 @@ async def load_molecule(session_id: str, req: LoadMoleculeRequest):
         raise HTTPException(404, f"System {req.system!r} not found in molecule library")
 
     src_file = next(
-        (f for f in src_dir.iterdir() if f.is_file() and f.suffix.lower() in _MOL_EXTS and f.stem == req.state),
+        (
+            f
+            for f in src_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in _MOL_EXTS and f.stem == req.state
+        ),
         None,
     )
     if src_file is None:

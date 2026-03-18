@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -45,7 +45,7 @@ class PlumedGenerator:
         hills_height: float,
         hills_sigma: list[float],
         hills_pace: int,
-        biasfactor: Optional[float] = None,
+        biasfactor: float | None = None,
         temperature: float = 300.0,
         hills_file: str = "HILLS",
         colvar_file: str = "COLVAR",
@@ -143,7 +143,7 @@ class PlumedGenerator:
     def validate_plumed_input(
         self,
         plumed_file: str,
-        gro_file: Optional[str] = None,
+        gro_file: str | None = None,
     ) -> dict[str, Any]:
         """Dry-run PLUMED input validation using ``plumed driver --noatoms``.
 
@@ -175,13 +175,16 @@ class PlumedGenerator:
         hills_file: str,
         output_prefix: str = "fes",
         mintozero: bool = True,
-        stride: Optional[int] = None,
+        stride: int | None = None,
     ) -> dict[str, Any]:
         """Run ``plumed sum_hills`` to compute the free energy surface."""
         cmd = [
-            "plumed", "sum_hills",
-            "--hills", hills_file,
-            "--outfile", f"{output_prefix}.dat",
+            "plumed",
+            "sum_hills",
+            "--hills",
+            hills_file,
+            "--outfile",
+            f"{output_prefix}.dat",
         ]
         if mintozero:
             cmd.append("--mintozero")

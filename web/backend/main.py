@@ -8,6 +8,7 @@ from pathlib import Path
 
 if not os.environ.get("ANTHROPIC_API_KEY"):
     import warnings
+
     warnings.warn("ANTHROPIC_API_KEY is not set — agent calls will fail", stacklevel=1)
 
 # Allow imports of both web.backend.* and md_agent.* when running directly
@@ -15,11 +16,11 @@ _repo_root = str(Path(__file__).parents[2])
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-from web.backend.routers import (
+from web.backend.routers import (  # noqa: E402
     agents,
     analysis,
     auth,

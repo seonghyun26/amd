@@ -59,15 +59,18 @@ def _conn() -> sqlite3.Connection:
 def init_db() -> None:
     """Create tables and seed default users (idempotent)."""
     with _conn() as con:
-        con.execute("""
+        con.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT    UNIQUE NOT NULL,
                 password_hash TEXT    NOT NULL,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        con.execute("""
+        """
+        )
+        con.execute(
+            """
             CREATE TABLE IF NOT EXISTS user_api_keys (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 username   TEXT    NOT NULL,
@@ -76,11 +79,10 @@ def init_db() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(username, service)
             )
-        """)
+        """
+        )
         for username, password in _DEFAULT_USERS:
-            exists = con.execute(
-                "SELECT 1 FROM users WHERE username = ?", (username,)
-            ).fetchone()
+            exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
             if not exists:
                 con.execute(
                     "INSERT INTO users (username, password_hash) VALUES (?, ?)",

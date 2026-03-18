@@ -22,6 +22,19 @@ from web.backend.session_manager import get_or_restore_session
 
 router = APIRouter()
 
+MAX_PLOT_POINTS = 5000
+
+
+def _downsample(data: dict[str, list], max_points: int = MAX_PLOT_POINTS) -> dict[str, list]:
+    """Evenly downsample all columns to at most max_points entries."""
+    if not data:
+        return data
+    n = len(next(iter(data.values())))
+    if n <= max_points:
+        return data
+    step = max(1, n // max_points)
+    return {k: v[::step] for k, v in data.items()}
+
 
 def _require_session(session_id: str):
     session = get_or_restore_session(session_id)
@@ -105,6 +118,7 @@ async def get_ramachandran(session_id: str, force: bool = Query(default=False)):
     if not force and phi_npy.exists() and psi_npy.exists():
         try:
             import numpy as np
+
             return {
                 "data": {
                     "phi": np.load(str(phi_npy)).tolist(),
@@ -120,6 +134,7 @@ async def get_ramachandran(session_id: str, force: bool = Query(default=False)):
         return {"data": {}, "available": False, "error": error}
     try:
         import numpy as np
+
         return {
             "data": {
                 "phi": np.load(str(phi_npy)).tolist(),
@@ -174,12 +189,15 @@ async def compute_custom_cv(session_id: str, req: CustomCVRequest):
     for cv in req.cvs:
         expected = required_atoms[cv.type]
         if len(cv.atoms) != expected:
-            raise HTTPException(400, f"{cv.type} requires exactly {expected} atoms, got {len(cv.atoms)}")
+            raise HTTPException(
+                400, f"{cv.type} requires exactly {expected} atoms, got {len(cv.atoms)}"
+            )
         if any(a < 1 for a in cv.atoms):
             raise HTTPException(400, "Atom indices must be >= 1 (1-based)")
 
     try:
         from web.backend.analysis_utils import compute_custom_cvs
+
         cvs_dicts = [{"type": cv.type, "atoms": cv.atoms, "label": cv.label} for cv in req.cvs]
         data = compute_custom_cvs(str(session.work_dir), cvs_dicts, force=req.force)
         return {"data": data, "available": True}
@@ -193,6 +211,7 @@ async def get_atoms(session_id: str):
     session = _require_session(session_id)
     try:
         from web.backend.analysis_utils import get_atom_list
+
         atoms = get_atom_list(str(session.work_dir))
         return {"atoms": atoms, "available": len(atoms) > 0}
     except Exception as e:
@@ -211,6 +230,7 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
     session = _require_session(session_id)
     try:
         from web.backend.analysis_utils import get_atom_list
+
         atoms = get_atom_list(str(session.work_dir))
     except Exception as e:
         raise HTTPException(500, f"Failed to load atom list: {e}")
@@ -224,11 +244,13 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
         for i in range(len(ca_atoms)):
             for j in range(i + 1, len(ca_atoms)):
                 a1, a2 = ca_atoms[i], ca_atoms[j]
-                cvs.append({
-                    "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
-                    "type": "DISTANCE",
-                    "atoms": [a1["index"], a2["index"]],
-                })
+                cvs.append(
+                    {
+                        "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
+                        "type": "DISTANCE",
+                        "atoms": [a1["index"], a2["index"]],
+                    }
+                )
                 idx += 1
         return {"cvs": cvs, "count": len(cvs)}
 
@@ -236,11 +258,13 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
         cvs = []
         for i in range(len(ca_atoms) - 1):
             a1, a2 = ca_atoms[i], ca_atoms[i + 1]
-            cvs.append({
-                "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
-                "type": "DISTANCE",
-                "atoms": [a1["index"], a2["index"]],
-            })
+            cvs.append(
+                {
+                    "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
+                    "type": "DISTANCE",
+                    "atoms": [a1["index"], a2["index"]],
+                }
+            )
         return {"cvs": cvs, "count": len(cvs)}
 
     elif macro == "backbone_torsion":
@@ -262,23 +286,30 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
             if k > 0:
                 prev = residues[sorted_res[k - 1]]
                 if all(x in prev for x in ["C"]) and all(x in r for x in ["N", "CA", "C"]):
-                    cvs.append({
-                        "name": f"phi_{res_i}",
-                        "type": "TORSION",
-                        "atoms": [prev["C"], r["N"], r["CA"], r["C"]],
-                    })
+                    cvs.append(
+                        {
+                            "name": f"phi_{res_i}",
+                            "type": "TORSION",
+                            "atoms": [prev["C"], r["N"], r["CA"], r["C"]],
+                        }
+                    )
 
             # ψ (psi): N(i) - CA(i) - C(i) - N(i+1)
             if k < len(sorted_res) - 1:
                 nxt = residues[sorted_res[k + 1]]
                 if all(x in r for x in ["N", "CA", "C"]) and "N" in nxt:
-                    cvs.append({
-                        "name": f"psi_{res_i}",
-                        "type": "TORSION",
-                        "atoms": [r["N"], r["CA"], r["C"], nxt["N"]],
-                    })
+                    cvs.append(
+                        {
+                            "name": f"psi_{res_i}",
+                            "type": "TORSION",
+                            "atoms": [r["N"], r["CA"], r["C"], nxt["N"]],
+                        }
+                    )
 
         return {"cvs": cvs, "count": len(cvs)}
 
     else:
-        raise HTTPException(400, f"Unknown macro: {macro}. Use: all_ca_distance, consecutive_ca_distance, backbone_torsion")
+        raise HTTPException(
+            400,
+            f"Unknown macro: {macro}. Use: all_ca_distance, consecutive_ca_distance, backbone_torsion",
+        )

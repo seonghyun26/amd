@@ -137,6 +137,7 @@ def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None
         expected_nsteps = None
         if cfg_path.exists():
             from omegaconf import OmegaConf
+
             cfg = OmegaConf.load(cfg_path)
             n = OmegaConf.select(cfg, "method.nsteps")
             if n is not None:
@@ -213,11 +214,13 @@ def get_simulation_status(session_id: str) -> dict:
         if "expected_nsteps" not in session.sim_status:
             try:
                 from omegaconf import OmegaConf
+
                 nsteps = OmegaConf.select(cfg, "method.nsteps")
                 if nsteps is not None:
                     session.sim_status["expected_nsteps"] = int(nsteps)
             except Exception:
                 pass
+
         # Helper to attach wall-clock timestamps from sim_status
         def _with_timestamps(result: dict) -> dict:
             sa = session.sim_status.get("started_at") if session.sim_status else None
@@ -227,6 +230,7 @@ def get_simulation_status(session_id: str) -> dict:
             if fa is not None:
                 result["finished_at"] = fa
             return result
+
         if runner is not None:
             proc = getattr(runner, "_mdrun_proc", None)
             inferred = _infer_terminal_status_from_outputs(session)
@@ -256,12 +260,14 @@ def get_simulation_status(session_id: str) -> dict:
                 pass
             # If process exited before step-based completion:
             # rc=0 → treat as finished (clean exit), rc!=0 → failed.
-            return _with_timestamps({
-                "running": False,
-                "status": "finished" if rc == 0 else "failed",
-                "pid": proc.pid,
-                "exit_code": rc,
-            })
+            return _with_timestamps(
+                {
+                    "running": False,
+                    "status": "finished" if rc == 0 else "failed",
+                    "pid": proc.pid,
+                    "exit_code": rc,
+                }
+            )
     except Exception:
         pass
     return {"running": False, "status": "standby"}
@@ -284,6 +290,7 @@ def restore_session(
     legacy_cfg_path = Path(work_dir) / "config.yaml"
     if cfg_path.exists():
         from omegaconf import OmegaConf
+
         cfg = OmegaConf.load(cfg_path)
         # Cleanup leftover legacy location if root config already exists.
         if legacy_cfg_path.exists():
@@ -293,6 +300,7 @@ def restore_session(
                 pass
     elif legacy_cfg_path.exists():
         from omegaconf import OmegaConf
+
         cfg = OmegaConf.load(legacy_cfg_path)
         # Migrate legacy location (<session>/data/config.yaml) to session root.
         OmegaConf.save(cfg, cfg_path)
@@ -303,7 +311,9 @@ def restore_session(
     else:
         cfg = _load_hydra_cfg([], work_dir)
 
-    session = Session(session_id=session_id, work_dir=work_dir, nickname=nickname, username=username)
+    session = Session(
+        session_id=session_id, work_dir=work_dir, nickname=nickname, username=username
+    )
     session.agent = MDAgent(cfg=cfg, work_dir=work_dir)
     _sessions[session_id] = session
     return session
@@ -330,6 +340,7 @@ def get_or_restore_session(session_id: str) -> Session | None:
         for sf in root.rglob("session.json"):
             try:
                 import json as _json
+
                 data = _json.loads(sf.read_text())
                 if data.get("session_id") != session_id:
                     continue

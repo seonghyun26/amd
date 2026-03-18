@@ -63,6 +63,7 @@ def _count_frames(xtc_path: Path, top_path: Path) -> int:
     if key in _frame_count_cache:
         return _frame_count_cache[key]
     import mdtraj
+
     try:
         with mdtraj.open(str(xtc_path)) as f:
             n = len(f)

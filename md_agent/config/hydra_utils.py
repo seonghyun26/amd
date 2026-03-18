@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -11,46 +11,46 @@ from omegaconf import DictConfig, OmegaConf
 # Hydra config key (underscore) → GROMACS MDP keyword (may use hyphens)
 # Only keys listed here are written to the .mdp file.
 MDP_KEY_MAP: dict[str, str] = {
-    "integrator":           "integrator",
-    "dt":                   "dt",
-    "nsteps":               "nsteps",
-    "tcoupl":               "tcoupl",
-    "tc_grps":              "tc-grps",
-    "tau_t":                "tau-t",
-    "ref_t":                "ref-t",
-    "pcoupl":               "pcoupl",
-    "pcoupltype":           "pcoupltype",
-    "tau_p":                "tau-p",
-    "ref_p":                "ref-p",
-    "compressibility":      "compressibility",
-    "cutoff_scheme":        "cutoff-scheme",
-    "nstlist":              "nstlist",
-    "rlist":                "rlist",
-    "rcoulomb":             "rcoulomb",
-    "rvdw":                 "rvdw",
-    "coulombtype":          "coulombtype",
-    "pme_order":            "pme-order",
-    "fourierspacing":       "fourierspacing",
-    "constraints":          "constraints",
+    "integrator": "integrator",
+    "dt": "dt",
+    "nsteps": "nsteps",
+    "tcoupl": "tcoupl",
+    "tc_grps": "tc-grps",
+    "tau_t": "tau-t",
+    "ref_t": "ref-t",
+    "pcoupl": "pcoupl",
+    "pcoupltype": "pcoupltype",
+    "tau_p": "tau-p",
+    "ref_p": "ref-p",
+    "compressibility": "compressibility",
+    "cutoff_scheme": "cutoff-scheme",
+    "nstlist": "nstlist",
+    "rlist": "rlist",
+    "rcoulomb": "rcoulomb",
+    "rvdw": "rvdw",
+    "coulombtype": "coulombtype",
+    "pme_order": "pme-order",
+    "fourierspacing": "fourierspacing",
+    "constraints": "constraints",
     "constraint_algorithm": "constraint-algorithm",
-    "lincs_iter":           "lincs-iter",
-    "lincs_order":          "lincs-order",
-    "nstxout":              "nstxout",
-    "nstvout":              "nstvout",
-    "nstfout":              "nstfout",
-    "nstlog":               "nstlog",
-    "nstxout_compressed":   "nstxout-compressed",
-    "nstenergy":            "nstenergy",
-    "gen_vel":              "gen-vel",
-    "gen_seed":             "gen-seed",
-    "continuation":         "continuation",
+    "lincs_iter": "lincs-iter",
+    "lincs_order": "lincs-order",
+    "nstxout": "nstxout",
+    "nstvout": "nstvout",
+    "nstfout": "nstfout",
+    "nstlog": "nstlog",
+    "nstxout_compressed": "nstxout-compressed",
+    "nstenergy": "nstenergy",
+    "gen_vel": "gen-vel",
+    "gen_seed": "gen-seed",
+    "continuation": "continuation",
 }
 
 
 def generate_mdp_from_config(
     cfg: DictConfig,
     output_path: str,
-    extra_params: Optional[dict[str, Any]] = None,
+    extra_params: dict[str, Any] | None = None,
 ) -> str:
     """Render a GROMACS .mdp file from the current Hydra config.
 
@@ -75,17 +75,27 @@ def generate_mdp_from_config(
         ref_t = gromacs_cfg.get("ref_t")
         tau_t = gromacs_cfg.get("tau_t")
         temp = gromacs_cfg.get("temperature", 300)
-        ref_t0 = ref_t[0] if isinstance(ref_t, (list, tuple)) and ref_t else (ref_t if ref_t is not None else temp)
-        tau_t0 = tau_t[0] if isinstance(tau_t, (list, tuple)) and tau_t else (tau_t if tau_t is not None else 0.1)
+        ref_t0 = (
+            ref_t[0]
+            if isinstance(ref_t, (list, tuple)) and ref_t
+            else (ref_t if ref_t is not None else temp)
+        )
+        tau_t0 = (
+            tau_t[0]
+            if isinstance(tau_t, (list, tuple)) and tau_t
+            else (tau_t if tau_t is not None else 0.1)
+        )
         gromacs_cfg["tc_grps"] = ["System"]
         gromacs_cfg["ref_t"] = [ref_t0]
         gromacs_cfg["tau_t"] = [tau_t0]
 
     # PLUMED methods must not write forces to trajectory — force nstfout=0
     # before the MDP loop so it is written exactly once.
-    if (
-        hasattr(cfg, "method")
-        and OmegaConf.select(cfg, "method._target_name") not in (None, "plain", "plain_md", "md")
+    if hasattr(cfg, "method") and OmegaConf.select(cfg, "method._target_name") not in (
+        None,
+        "plain",
+        "plain_md",
+        "md",
     ):
         gromacs_cfg["nstfout"] = 0
 

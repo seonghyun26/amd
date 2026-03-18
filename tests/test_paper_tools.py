@@ -1,7 +1,7 @@
 """Tests for paper retrieval and settings extraction."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -70,14 +70,16 @@ class TestMDSettingsExtractor:
         return MDSettingsExtractor(mock_client)
 
     def test_extracts_valid_json(self):
-        response = json.dumps({
-            "method": "metadynamics",
-            "gromacs": {"dt": 0.002, "temperature": 300},
-            "plumed": {"hills_height": 1.2, "hills_sigma": [0.35], "hills_pace": 500},
-            "system": {"forcefield": "charmm36m"},
-            "notes": "",
-            "confidence": "high",
-        })
+        response = json.dumps(
+            {
+                "method": "metadynamics",
+                "gromacs": {"dt": 0.002, "temperature": 300},
+                "plumed": {"hills_height": 1.2, "hills_sigma": [0.35], "hills_pace": 500},
+                "system": {"forcefield": "charmm36m"},
+                "notes": "",
+                "confidence": "high",
+            }
+        )
         extractor = self._make_extractor(response)
         result = extractor.extract_md_settings_from_text("paper text")
         assert result["method"] == "metadynamics"

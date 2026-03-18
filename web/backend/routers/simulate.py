@@ -21,7 +21,9 @@ def _auto_detect_gpu() -> str | None:
     try:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode != 0:
             return None
@@ -32,6 +34,7 @@ def _auto_detect_gpu() -> str | None:
     except Exception:
         pass
     return None
+
 
 _COORD_EXTS = {".gro", ".pdb"}
 
@@ -80,6 +83,8 @@ def _persist_run_status(session: object, status: str) -> None:
         meta_path.write_text(json.dumps(meta, indent=2))
     except Exception:
         pass
+
+
 _TOP_EXTS = {".top"}
 
 # Subfolder within work_dir where mdrun writes its output files
@@ -192,13 +197,14 @@ async def start_simulation(session_id: str):
     cfg = session.agent.cfg
     gmx = session.agent._gmx
 
-    forcefield    = OmegaConf.select(cfg, "system.forcefield")    or "amber99sb-ildn"
-    water_model   = OmegaConf.select(cfg, "system.water_model")   or "none"
+    forcefield = OmegaConf.select(cfg, "system.forcefield") or "amber99sb-ildn"
+    water_model = OmegaConf.select(cfg, "system.water_model") or "none"
     box_clearance = float(OmegaConf.select(cfg, "gromacs.box_clearance") or 1.5)
 
     try:
         # 1. Generate md.mdp from current config
         from md_agent.config.hydra_utils import generate_mdp_from_config
+
         generate_mdp_from_config(cfg, str(work_dir / "md.mdp"))
 
         # 2. Find the raw input coordinate file (the original PDB/GRO the user uploaded)
@@ -206,7 +212,9 @@ async def start_simulation(session_id: str):
         # Exclude derived GROMACS outputs so preprocessing always starts from raw input.
         input_coord = _find_source_coord(work_dir, preferred_coord)
         if not input_coord:
-            raise HTTPException(400, "No coordinate file (.gro or .pdb) found in session directory.")
+            raise HTTPException(
+                400, "No coordinate file (.gro or .pdb) found in session directory."
+            )
         input_stem = Path(input_coord).stem
         system_gro = f"{input_stem}_system.gro"
         box_gro = f"{input_stem}_box.gro"
@@ -224,8 +232,19 @@ async def start_simulation(session_id: str):
         def _run_pdb2gmx(ff: str) -> dict:
             return gmx.run_gmx_command(
                 "pdb2gmx",
-                ["-f", input_coord, "-o", system_gro, "-p", "topol.top",
-                 "-ff", ff, "-water", water_model, "-ignh"],
+                [
+                    "-f",
+                    input_coord,
+                    "-o",
+                    system_gro,
+                    "-p",
+                    "topol.top",
+                    "-ff",
+                    ff,
+                    "-water",
+                    water_model,
+                    "-ignh",
+                ],
                 work_dir=str(work_dir),
             )
 
@@ -234,10 +253,14 @@ async def start_simulation(session_id: str):
         # Fall back to amber99sb-ildn if the chosen FF lacks the residue
         if result["returncode"] != 0:
             stderr = result.get("stderr", "")
-            if "not found in residue topology database" in stderr and forcefield != "amber99sb-ildn":
+            if (
+                "not found in residue topology database" in stderr
+                and forcefield != "amber99sb-ildn"
+            ):
                 result = _run_pdb2gmx("amber99sb-ildn")
                 if result["returncode"] == 0:
                     from omegaconf import OmegaConf as _OC
+
                     _OC.update(cfg, "system.forcefield", "amber99sb-ildn", merge=True)
                     forcefield = "amber99sb-ildn"
 
@@ -260,8 +283,17 @@ async def start_simulation(session_id: str):
             # B1. Add simulation box using configured clearance
             r = gmx.run_gmx_command(
                 "editconf",
-                ["-f", system_gro, "-o", box_gro,
-                 "-c", "-d", str(box_clearance), "-bt", "dodecahedron"],
+                [
+                    "-f",
+                    system_gro,
+                    "-o",
+                    box_gro,
+                    "-c",
+                    "-d",
+                    str(box_clearance),
+                    "-bt",
+                    "dodecahedron",
+                ],
                 work_dir=str(work_dir),
             )
             if r["returncode"] != 0:
@@ -270,8 +302,7 @@ async def start_simulation(session_id: str):
             # B2. Fill with water
             r = gmx.run_gmx_command(
                 "solvate",
-                ["-cp", box_gro, "-cs", "spc216.gro",
-                 "-o", solvated_gro, "-p", "topol.top"],
+                ["-cp", box_gro, "-cs", "spc216.gro", "-o", solvated_gro, "-p", "topol.top"],
                 work_dir=str(work_dir),
             )
             if r["returncode"] != 0:
@@ -291,8 +322,19 @@ async def start_simulation(session_id: str):
             # B4. Replace water molecules with Na+/Cl- to neutralise
             r = gmx.run_gmx_command(
                 "genion",
-                ["-s", "ions.tpr", "-o", ionized_gro, "-p", "topol.top",
-                 "-pname", "NA", "-nname", "CL", "-neutral"],
+                [
+                    "-s",
+                    "ions.tpr",
+                    "-o",
+                    ionized_gro,
+                    "-p",
+                    "topol.top",
+                    "-pname",
+                    "NA",
+                    "-nname",
+                    "CL",
+                    "-neutral",
+                ],
                 stdin_text="SOL\n",
                 work_dir=str(work_dir),
             )
@@ -308,19 +350,20 @@ async def start_simulation(session_id: str):
             _src = system_gro if (work_dir / system_gro).exists() else input_coord
             r = gmx.run_gmx_command(
                 "editconf",
-                ["-f", _src, "-o", box_gro,
-                 "-c", "-d", str(box_clearance), "-bt", "cubic"],
+                ["-f", _src, "-o", box_gro, "-c", "-d", str(box_clearance), "-bt", "cubic"],
                 work_dir=str(work_dir),
             )
             if r["returncode"] != 0:
-                raise HTTPException(500, f"editconf (vacuum) failed:\n{r.get('stderr', '')[-2000:]}")
+                raise HTTPException(
+                    500, f"editconf (vacuum) failed:\n{r.get('stderr', '')[-2000:]}"
+                )
 
             coord_file = box_gro
 
         # ── Step C: production grompp → md.tpr ─────────────────────────────
         _archive_existing(work_dir, "md.tpr", "mdout.mdp")
         index_file = OmegaConf.select(cfg, "system.index") or None
-        has_index  = index_file and (work_dir / index_file).exists()
+        has_index = index_file and (work_dir / index_file).exists()
         grompp = gmx.grompp(
             mdp_file="md.mdp",
             topology_file=top_file,
@@ -351,8 +394,20 @@ async def start_simulation(session_id: str):
             gpu_id = _auto_detect_gpu()
         # Pass plumed.dat for enhanced-sampling methods
         method_name = OmegaConf.select(cfg, "method._target_name") or "md"
-        plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
-        plumed_file = "plumed.dat" if method_name in plumed_methods and (work_dir / "plumed.dat").exists() else None
+        plumed_methods = {
+            "metadynamics",
+            "metad",
+            "opes",
+            "umbrella",
+            "umbrella_sampling",
+            "steered",
+            "steered_md",
+        }
+        plumed_file = (
+            "plumed.dat"
+            if method_name in plumed_methods and (work_dir / "plumed.dat").exists()
+            else None
+        )
         mdrun = gmx.mdrun(
             tpr_file="md.tpr",
             output_prefix=output_prefix,
@@ -388,6 +443,7 @@ async def start_simulation(session_id: str):
 async def simulation_status(session_id: str):
     """Check whether mdrun is currently running for this session."""
     from web.backend.session_manager import get_simulation_status
+
     result = get_simulation_status(session_id)
     terminal = result.get("status") if result.get("status") in {"finished", "failed"} else None
     if terminal:
@@ -405,6 +461,7 @@ async def stop_simulation(session_id: str):
     so the user knows whether resume is possible.
     """
     from web.backend.session_manager import stop_session_simulation
+
     stopped = stop_session_simulation(session_id)
     session = get_session(session_id)
     has_checkpoint = False
@@ -420,6 +477,7 @@ async def stop_simulation(session_id: str):
 async def terminate_simulation(session_id: str):
     """Permanently stop a simulation — reset to standby, discard checkpoint intent."""
     from web.backend.session_manager import stop_session_simulation
+
     stop_session_simulation(session_id)
     session = get_session(session_id)
     if session:
@@ -483,7 +541,15 @@ async def resume_simulation(session_id: str):
 
         # Generate plumed.dat if needed (same as initial launch)
         method_name = OmegaConf.select(cfg, "method._target_name") or "plain_md"
-        plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
+        plumed_methods = {
+            "metadynamics",
+            "metad",
+            "opes",
+            "umbrella",
+            "umbrella_sampling",
+            "steered",
+            "steered_md",
+        }
         plumed_file = None
         if method_name in plumed_methods and (work_dir / "plumed.dat").exists():
             plumed_file = "plumed.dat"
@@ -500,7 +566,9 @@ async def resume_simulation(session_id: str):
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
         session.sim_status = {
             "status": "running",
-            "started_at": session.sim_status.get("started_at", time.time()) if session.sim_status else time.time(),
+            "started_at": session.sim_status.get("started_at", time.time())
+            if session.sim_status
+            else time.time(),
             "resumed_at": time.time(),
             "output_prefix": output_prefix,
             "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,

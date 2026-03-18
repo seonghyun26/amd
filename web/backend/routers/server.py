@@ -31,14 +31,16 @@ def _nvidia_smi_query() -> list[dict]:
             parts = [p.strip() for p in line.split(",")]
             if len(parts) < 6:
                 continue
-            gpus.append({
-                "index": int(parts[0]),
-                "name": parts[1],
-                "memory_used_mb": int(parts[2]),
-                "memory_total_mb": int(parts[3]),
-                "utilization_pct": int(parts[4]),
-                "temperature_c": int(parts[5]),
-            })
+            gpus.append(
+                {
+                    "index": int(parts[0]),
+                    "name": parts[1],
+                    "memory_used_mb": int(parts[2]),
+                    "memory_total_mb": int(parts[3]),
+                    "utilization_pct": int(parts[4]),
+                    "temperature_c": int(parts[5]),
+                }
+            )
         return gpus
     except Exception:
         return []
@@ -62,7 +64,9 @@ def _nvidia_smi_processes() -> list[dict]:
         # Map GPU UUID → index
         uuid_result = subprocess.run(
             ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         uuid_to_idx: dict[str, int] = {}
         for line in uuid_result.stdout.strip().splitlines():
@@ -76,11 +80,13 @@ def _nvidia_smi_processes() -> list[dict]:
             if len(parts) < 3:
                 continue
             gpu_uuid = parts[0]
-            procs.append({
-                "gpu_index": uuid_to_idx.get(gpu_uuid, -1),
-                "pid": int(parts[1]),
-                "memory_mb": int(parts[2]),
-            })
+            procs.append(
+                {
+                    "gpu_index": uuid_to_idx.get(gpu_uuid, -1),
+                    "pid": int(parts[1]),
+                    "memory_mb": int(parts[2]),
+                }
+            )
         return procs
     except Exception:
         return []
@@ -112,9 +118,10 @@ def _cpu_info() -> dict:
 
         # Disk usage
         import shutil
+
         disk = shutil.disk_usage("/")
-        disk_total_gb = disk.total / (1024 ** 3)
-        disk_used_gb = disk.used / (1024 ** 3)
+        disk_total_gb = disk.total / (1024**3)
+        disk_used_gb = disk.used / (1024**3)
 
         return {
             "load_1m": float(loadavg[0]),

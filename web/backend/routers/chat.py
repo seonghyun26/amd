@@ -28,19 +28,21 @@ _REPO_ROOT = Path(__file__).parents[3]
 
 # Maps preset id → Hydra config group selections
 PRESET_CONFIGS: dict[str, dict[str, str]] = {
-    "undefined": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
-    "md":        dict(method="plain_md",     system="protein", gromacs="default", plumed_cvs="default"),
-    "metad":     dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
-    "opes":      dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
-    "umbrella":  dict(method="umbrella",     system="protein", gromacs="default", plumed_cvs="default"),
-    "steered":   dict(method="steered",      system="protein", gromacs="default", plumed_cvs="default"),
+    "undefined": dict(
+        method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"
+    ),
+    "md": dict(method="plain_md", system="protein", gromacs="default", plumed_cvs="default"),
+    "metad": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
+    "opes": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
+    "umbrella": dict(method="umbrella", system="protein", gromacs="default", plumed_cvs="default"),
+    "steered": dict(method="steered", system="protein", gromacs="default", plumed_cvs="default"),
 }
 
 # Maps molecule system id → subdirectory name under data/molecule/
 _DATA_MOLECULES = _REPO_ROOT / "data" / "molecule"
 _SYSTEM_DIR: dict[str, str] = {
     "ala_dipeptide": "alanine_dipeptide",
-    "chignolin":     "chignolin",
+    "chignolin": "chignolin",
 }
 _MOL_EXTS = {".pdb", ".gro", ".mol2", ".xyz", ".sdf"}
 
@@ -50,6 +52,7 @@ def _seed_files(work_dir: str, preset: str, system: str, state: str = "") -> lis
     When state is provided, only the matching state file is copied.
     Returns a list of copied file names (relative to work_dir)."""
     import shutil
+
     seeded: list[str] = []
     dir_name = _SYSTEM_DIR.get(system)
     if not dir_name:
@@ -69,6 +72,7 @@ def _seed_files(work_dir: str, preset: str, system: str, state: str = "") -> lis
 
 # ── Session lifecycle ──────────────────────────────────────────────────
 
+
 class CreateSessionRequest(BaseModel):
     work_dir: str
     nickname: str = ""
@@ -77,7 +81,7 @@ class CreateSessionRequest(BaseModel):
     # Individual overrides (ignored when preset is set)
     method: str = ""
     system: str = ""
-    state: str = ""   # molecule conformational state (e.g. "c5", "c7ax")
+    state: str = ""  # molecule conformational state (e.g. "c5", "c7ax")
     gromacs: str = ""
     plumed_cvs: str = ""
     extra_overrides: list[str] = []
@@ -90,7 +94,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
     # Resolve config from preset; individual fields override if provided
     cfg_defaults = PRESET_CONFIGS.get(req.preset, PRESET_CONFIGS["undefined"])
-    method     = req.method     or cfg_defaults["method"]
+    method = req.method or cfg_defaults["method"]
     plumed_cvs = req.plumed_cvs or cfg_defaults["plumed_cvs"]
     # molecule_system is the UI selector (used for file seeding only)
     molecule_system = req.system  # e.g. "ala_dipeptide", "chignolin", "blank"
@@ -98,10 +102,10 @@ async def create_session_endpoint(req: CreateSessionRequest):
     # Map UI template ids to Hydra config group names (conf/gromacs/*.yaml).
     # UI sends "auto" or "vacuum"; preset default is "default".
     _HYDRA_GROMACS_MAP: dict[str, str] = {
-        "auto":    "default",
+        "auto": "default",
         "default": "default",
-        "vacuum":  "vacuum",
-        "tip3p":   "tip3p",
+        "vacuum": "vacuum",
+        "tip3p": "tip3p",
     }
     gromacs_raw = (req.gromacs or cfg_defaults["gromacs"] or "").strip()
     gromacs = _HYDRA_GROMACS_MAP.get(gromacs_raw.lower(), gromacs_raw)
@@ -111,16 +115,20 @@ async def create_session_endpoint(req: CreateSessionRequest):
     _VACUUM_CONFIGS = {"vacuum"}
     extra_overrides = list(req.extra_overrides)
     if gromacs in _VACUUM_CONFIGS:
-        extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + ["system.water_model=none"]
+        extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + [
+            "system.water_model=none"
+        ]
     elif gromacs == "tip3p":
         # Explicit TIP3P solvation — override any system default (e.g. ala_dipeptide has water_model: none)
-        extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + ["system.water_model=tip3p"]
+        extra_overrides = [o for o in extra_overrides if not o.startswith("system.water_model")] + [
+            "system.water_model=tip3p"
+        ]
 
     # hydra_system must be a valid conf/system/*.yaml name
     _HYDRA_SYSTEM_MAP: dict[str, str] = {
         "ala_dipeptide": "ala_dipeptide",
-        "chignolin":     "protein",
-        "blank":         "protein",
+        "chignolin": "protein",
+        "blank": "protein",
     }
     hydra_system = _HYDRA_SYSTEM_MAP.get(molecule_system) or cfg_defaults["system"]
 
@@ -147,12 +155,11 @@ async def create_session_endpoint(req: CreateSessionRequest):
     # If a structure file was seeded, update system.coordinates so the UI
     # can auto-load the correct molecule on session open.
     _STRUCT_EXTS = {".pdb", ".gro", ".mol2", ".xyz"}
-    seeded_struct = next(
-        (f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS), None
-    )
+    seeded_struct = next((f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS), None)
     if seeded_struct:
         try:
             from omegaconf import OmegaConf as _OC
+
             _OC.update(session.agent.cfg, "system.coordinates", seeded_struct, merge=True)
         except Exception:
             pass
@@ -161,6 +168,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
     # shared metadata for the whole session.
     try:
         from omegaconf import OmegaConf
+
         cfg_path = Path(req.work_dir).parent / "config.yaml"
         OmegaConf.save(session.agent.cfg, cfg_path)
     except Exception:
@@ -168,6 +176,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
     # Write session.json for persistence across server restarts
     from datetime import datetime
+
     meta = {
         "session_id": session.session_id,
         "nickname": session.nickname,
@@ -216,22 +225,25 @@ async def list_sessions_endpoint(username: str = ""):
                     inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
                     if inferred in ("finished", "failed"):
                         import time as _time
+
                         run_status = inferred
                         data["run_status"] = inferred
                         data.setdefault("started_at", _time.time())
                         data.setdefault("finished_at", _time.time())
                         sf.write_text(json.dumps(data, indent=2))
-                sessions.append({
-                    "session_id": data["session_id"],
-                    "work_dir": data["work_dir"],
-                    "nickname": data.get("nickname", ""),
-                    "selected_molecule": data.get("selected_molecule", ""),
-                    "updated_at": data.get("updated_at", ""),
-                    "run_status": run_status,
-                    "started_at": data.get("started_at"),
-                    "finished_at": data.get("finished_at"),
-                    "result_cards": data.get("result_cards", []),
-                })
+                sessions.append(
+                    {
+                        "session_id": data["session_id"],
+                        "work_dir": data["work_dir"],
+                        "nickname": data.get("nickname", ""),
+                        "selected_molecule": data.get("selected_molecule", ""),
+                        "updated_at": data.get("updated_at", ""),
+                        "run_status": run_status,
+                        "started_at": data.get("started_at"),
+                        "finished_at": data.get("finished_at"),
+                        "result_cards": data.get("result_cards", []),
+                    }
+                )
             except Exception:
                 continue
 
@@ -243,6 +255,7 @@ async def list_sessions_endpoint(username: str = ""):
 async def get_session_run_status(session_id: str):
     """Read run_status from session.json on disk. If still 'running', verify via md.log."""
     from web.backend.session_manager import infer_run_status_from_disk
+
     outputs_root = Path("outputs")
     for sf in outputs_root.glob("*/*/session.json"):
         try:
@@ -255,6 +268,7 @@ async def get_session_run_status(session_id: str):
                 inferred = infer_run_status_from_disk(sf.parent, work_dir)
                 if inferred in ("finished", "failed"):
                     import time as _time
+
                     run_status = inferred
                     data["run_status"] = inferred
                     data.setdefault("started_at", _time.time())
@@ -286,15 +300,18 @@ class ResultCardsRequest(BaseModel):
 async def update_result_cards(session_id: str, req: ResultCardsRequest):
     """Persist which result plot cards are open in session.json."""
     from datetime import datetime
+
     for sf in Path("outputs").glob("*/*/session.json"):
         try:
             data = json.loads(sf.read_text())
             if data.get("session_id") != session_id:
                 continue
-            data.update({
-                "result_cards": req.result_cards,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            data.update(
+                {
+                    "result_cards": req.result_cards,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            )
             sf.write_text(json.dumps(data, indent=2))
             break
         except Exception:
@@ -306,15 +323,18 @@ async def update_result_cards(session_id: str, req: ResultCardsRequest):
 async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
     """Persist the selected molecule filename in session.json."""
     from datetime import datetime
+
     for sf in Path("outputs").glob("*/*/session.json"):
         try:
             data = json.loads(sf.read_text())
             if data.get("session_id") != session_id:
                 continue
-            data.update({
-                "selected_molecule": req.selected_molecule,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            data.update(
+                {
+                    "selected_molecule": req.selected_molecule,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            )
             sf.write_text(json.dumps(data, indent=2))
             break
         except Exception:
@@ -325,6 +345,7 @@ async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
 @router.patch("/sessions/{session_id}/nickname")
 async def update_nickname(session_id: str, req: NicknameRequest):
     from datetime import datetime
+
     nickname = req.nickname.strip()
     # Update the in-memory session if it exists
     session = get_session(session_id)
@@ -354,7 +375,11 @@ class RestoreRequest(BaseModel):
 async def restore_session_endpoint(session_id: str, req: RestoreRequest):
     """Ensure a session is live in memory, reconstructing from config.yaml if needed."""
     session = restore_session(session_id, req.work_dir, req.nickname, req.username)
-    return {"session_id": session.session_id, "work_dir": session.work_dir, "nickname": session.nickname}
+    return {
+        "session_id": session.session_id,
+        "work_dir": session.work_dir,
+        "nickname": session.nickname,
+    }
 
 
 @router.delete("/sessions/{session_id}")
@@ -375,10 +400,12 @@ async def delete_session_endpoint(session_id: str):
                 continue
 
             # Mark as deleted in session.json before moving
-            data.update({
-                "status": "deleted",
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            data.update(
+                {
+                    "status": "deleted",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            )
             sf.write_text(json.dumps(data, indent=2))
 
             # session folder is the parent of session.json
@@ -405,6 +432,7 @@ async def delete_session_endpoint(session_id: str):
 
 
 # ── Streaming chat ─────────────────────────────────────────────────────
+
 
 def _format_sse(event: dict) -> str:
     return f"data: {json.dumps(event, default=str)}\n\n"
@@ -444,7 +472,11 @@ async def stream_chat(session_id: str, message: str):
 
         async def poll_progress():
             log_path = str(Path(session.work_dir) / "md.log")
-            total_steps = session.sim_status.get("expected_nsteps") or session.sim_status.get("total_steps") or 1
+            total_steps = (
+                session.sim_status.get("expected_nsteps")
+                or session.sim_status.get("total_steps")
+                or 1
+            )
             while True:
                 await asyncio.sleep(10)
                 info = get_log_progress(log_path)

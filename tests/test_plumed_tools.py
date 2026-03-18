@@ -52,8 +52,11 @@ class TestGenerateMetadynamics:
     def test_standard_metadynamics_no_biasfactor(self, gen, tmp_path, distance_cv):
         out = str(tmp_path / "plumed.dat")
         result = gen.generate_metadynamics(
-            output_path=out, cvs=[distance_cv],
-            hills_height=1.0, hills_sigma=[0.3], hills_pace=500,
+            output_path=out,
+            cvs=[distance_cv],
+            hills_height=1.0,
+            hills_sigma=[0.3],
+            hills_pace=500,
             biasfactor=None,
         )
         assert result["success"] is True

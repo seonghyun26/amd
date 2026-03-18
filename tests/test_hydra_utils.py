@@ -1,29 +1,30 @@
 """Tests for MDP generation — ensure no duplicate keys."""
 
-import pytest
 from omegaconf import OmegaConf
 
 from md_agent.config.hydra_utils import generate_mdp_from_config
 
 
 def _make_cfg(method_name: str = "metad"):
-    return OmegaConf.create({
-        "gromacs": {
-            "integrator": "md",
-            "dt": 0.002,
-            "nstxout": 0,
-            "nstvout": 0,
-            "nstfout": 0,
-            "nstlog": 1000,
-            "nstxout_compressed": 5000,
-            "nstenergy": 1000,
-            "tcoupl": "no",
-        },
-        "method": {
-            "_target_name": method_name,
-            "nsteps": 500000,
-        },
-    })
+    return OmegaConf.create(
+        {
+            "gromacs": {
+                "integrator": "md",
+                "dt": 0.002,
+                "nstxout": 0,
+                "nstvout": 0,
+                "nstfout": 0,
+                "nstlog": 1000,
+                "nstxout_compressed": 5000,
+                "nstenergy": 1000,
+                "tcoupl": "no",
+            },
+            "method": {
+                "_target_name": method_name,
+                "nsteps": 500000,
+            },
+        }
+    )
 
 
 class TestGenerateMdp:

@@ -8,8 +8,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _prompt(question: str, default: str | None = None) -> str:
     suffix = f" [{default}]" if default else ""
@@ -48,6 +48,7 @@ def _yesno(question: str, default: bool = True) -> bool:
 
 # ── Lazy imports (keep startup fast) ──────────────────────────────────────────
 
+
 def _load_hydra_cfg(
     conf_dir: str,
     overrides: list[str],
@@ -55,7 +56,6 @@ def _load_hydra_cfg(
 ) -> object:
     from hydra import compose, initialize_config_dir
     from hydra.core.global_hydra import GlobalHydra
-    from omegaconf import OmegaConf
 
     GlobalHydra.instance().clear()
     with initialize_config_dir(config_dir=conf_dir, job_name="amd"):
@@ -67,25 +67,26 @@ def _repo_conf_dir() -> str:
     """Return the conf/ directory, whether running from the repo or installed."""
     # When installed as a package, conf/ lives in share/amd-agent/conf
     import importlib.util
+
     spec = importlib.util.find_spec("md_agent")
     if spec and spec.origin:
         pkg_dir = Path(spec.origin).parent
 
     # Try repo root first (editable install / development)
     for candidate in [
-        Path(__file__).parents[1] / "conf",    # repo root/conf
+        Path(__file__).parents[1] / "conf",  # repo root/conf
         pkg_dir.parents[1] / "share" / "amd-agent" / "conf",  # installed
     ]:
         if candidate.is_dir():
             return str(candidate)
 
     raise FileNotFoundError(
-        "Cannot locate the conf/ directory. "
-        "Run 'pip install -e .' from the repository root."
+        "Cannot locate the conf/ directory. " "Run 'pip install -e .' from the repository root."
     )
 
 
 # ── Simulation-type handlers ──────────────────────────────────────────────────
+
 
 def _setup_from_paper(work_dir: str, conf_dir: str) -> tuple[object, str]:
     """Ask for a paper reference and build a reproduce-paper prompt."""
@@ -93,10 +94,10 @@ def _setup_from_paper(work_dir: str, conf_dir: str) -> tuple[object, str]:
     source = _choose(
         "How do you want to identify the paper?",
         [
-            ("arxiv",  "ArXiv ID  (e.g. 2301.12345)"),
-            ("query",  "Keyword search  (e.g. 'alanine dipeptide metadynamics')"),
-            ("pdf",    "Local PDF path"),
-            ("text",   "Paste paper text directly"),
+            ("arxiv", "ArXiv ID  (e.g. 2301.12345)"),
+            ("query", "Keyword search  (e.g. 'alanine dipeptide metadynamics')"),
+            ("pdf", "Local PDF path"),
+            ("text", "Paste paper text directly"),
         ],
     )
 
@@ -221,6 +222,7 @@ def _run_example(name: str, work_dir: str, conf_dir: str) -> None:
     from hydra import compose, initialize_config_dir
     from hydra.core.global_hydra import GlobalHydra
     from omegaconf import OmegaConf
+
     from md_agent.agent import MDAgent
 
     GlobalHydra.instance().clear()
@@ -230,7 +232,7 @@ def _run_example(name: str, work_dir: str, conf_dir: str) -> None:
             overrides=ex["overrides"] + [f"run.work_dir={work_dir}"],
         )
 
-    OmegaConf.update(cfg, "system.topology",    str(top))
+    OmegaConf.update(cfg, "system.topology", str(top))
     OmegaConf.update(cfg, "system.coordinates", str(gro))
 
     Path(work_dir).mkdir(parents=True, exist_ok=True)
@@ -263,6 +265,7 @@ def _run_example(name: str, work_dir: str, conf_dir: str) -> None:
 
 # ── Interactive setup ─────────────────────────────────────────────────────────
 
+
 def _interactive_setup(work_dir: str | None) -> None:
     try:
         conf_dir = _repo_conf_dir()
@@ -279,8 +282,8 @@ def _interactive_setup(work_dir: str | None) -> None:
         "What type of MD simulation do you want to run?",
         [
             ("description", "Describe the simulation in plain language"),
-            ("paper",       "Reproduce a published paper protocol"),
-            ("example",     "Run a built-in example"),
+            ("paper", "Reproduce a published paper protocol"),
+            ("example", "Run a built-in example"),
         ],
     )
 
@@ -337,6 +340,7 @@ def _interactive_setup(work_dir: str | None) -> None:
     # ── Patch WandB project in config ────────────────────────────────────────
     if wandb_project:
         from omegaconf import OmegaConf
+
         OmegaConf.update(cfg, "wandb.project", wandb_project)
 
     # ── Copy PDB into work_dir if local ──────────────────────────────────────
@@ -347,6 +351,7 @@ def _interactive_setup(work_dir: str | None) -> None:
             shutil.copy(pdb_path, dest)
             print(f"  Copied {pdb_path} → {dest}")
         from omegaconf import OmegaConf
+
         OmegaConf.update(cfg, "system.coordinates", str(dest))
 
     # ── Confirm before running ───────────────────────────────────────────────
@@ -373,6 +378,7 @@ def _interactive_setup(work_dir: str | None) -> None:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

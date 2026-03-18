@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
-
+from typing import Any
 
 # ── Unit conversion ────────────────────────────────────────────────────
 
@@ -52,16 +51,12 @@ def normalize_extracted_settings(settings: dict[str, Any]) -> dict[str, Any]:
     height_unit = plumed.pop("hills_height_unit", "kJ/mol")
     if height_unit.lower() in ("kcal/mol", "kcal"):
         if "hills_height" in plumed:
-            plumed["hills_height"] = convert_units(
-                plumed["hills_height"], "kcal/mol", "kJ/mol"
-            )
+            plumed["hills_height"] = convert_units(plumed["hills_height"], "kcal/mol", "kJ/mol")
 
     sigma_unit = plumed.pop("sigma_unit", "nm")
     if sigma_unit.lower() in ("angstrom", "å", "a"):
         if "hills_sigma" in plumed:
-            plumed["hills_sigma"] = [
-                convert_units(s, "Å", "nm") for s in plumed["hills_sigma"]
-            ]
+            plumed["hills_sigma"] = [convert_units(s, "Å", "nm") for s in plumed["hills_sigma"]]
 
     # Force constant: kJ/mol/nm^2 is GROMACS default; kcal/mol/Å^2 also common
     fc_unit = plumed.pop("force_constant_unit", "kJ/mol/nm^2")
@@ -76,6 +71,7 @@ def normalize_extracted_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 # ── EDR parsing ────────────────────────────────────────────────────────
+
 
 def parse_edr_with_pyedr(
     edr_path: str,
@@ -118,6 +114,7 @@ def parse_edr_with_pyedr(
 
 # ── COLVAR parsing ─────────────────────────────────────────────────────
 
+
 def parse_colvar_file(
     colvar_path: str,
     from_line: int = 0,
@@ -135,7 +132,7 @@ def parse_colvar_file(
         return []
 
     rows: list[dict[str, float]] = []
-    headers: Optional[list[str]] = None
+    headers: list[str] | None = None
     data_line_count = 0
 
     with open(colvar_path) as fh:
@@ -165,6 +162,7 @@ def parse_colvar_file(
 
 # ── HILLS parsing ──────────────────────────────────────────────────────
 
+
 def count_hills(hills_path: str) -> int:
     """Count the number of Gaussian hills deposited (non-comment data lines)."""
     if not Path(hills_path).exists():
@@ -180,7 +178,8 @@ def count_hills(hills_path: str) -> int:
 
 # ── GROMACS .log parsing ───────────────────────────────────────────────
 
-def parse_gromacs_log_progress(log_path: str) -> Optional[dict[str, Any]]:
+
+def parse_gromacs_log_progress(log_path: str) -> dict[str, Any] | None:
     """Extract the latest performance/step info from a GROMACS .log file.
 
     Returns a dict with keys: 'step', 'time_ps', 'ns_per_day' (if available),
@@ -189,9 +188,9 @@ def parse_gromacs_log_progress(log_path: str) -> Optional[dict[str, Any]]:
     if not Path(log_path).exists():
         return None
 
-    step: Optional[int] = None
-    time_ps: Optional[float] = None
-    ns_per_day: Optional[float] = None
+    step: int | None = None
+    time_ps: float | None = None
+    ns_per_day: float | None = None
 
     with open(log_path) as fh:
         for line in fh:

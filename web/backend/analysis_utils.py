@@ -12,7 +12,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-from md_agent.utils.parsers import (
+from md_agent.utils.parsers import (  # noqa: E402
     parse_colvar_file,
     parse_gromacs_log_progress,
 )
@@ -36,11 +36,12 @@ def _parse_energy_term_indices(output: str, desired: list[str]) -> list[int]:
     section = output[dash_pos:] if dash_pos != -1 else output
 
     # Each entry: "  11  Kinetic-En." padded to fixed column width.
-    pairs = re.findall(r"\b(\d+)\s{2,}([A-Za-z][\w\s\.\-\(\)]{0,20}?)(?=\s{2,}|\s*\n|\s*$)", section)
+    pairs = re.findall(
+        r"\b(\d+)\s{2,}([A-Za-z][\w\s\.\-\(\)]{0,20}?)(?=\s{2,}|\s*\n|\s*$)", section
+    )
     # Build map of normalised_name → index
     term_map: dict[str, int] = {
-        _norm(name.strip()): int(num)
-        for num, name in pairs if name.strip()
+        _norm(name.strip()): int(num) for num, name in pairs if name.strip()
     }
 
     indices: list[int] = []
@@ -102,14 +103,15 @@ def _save_energy_npy(data: dict[str, list], analysis_dir: Path) -> None:
     """Save each energy term as a separate .npy file for fast cached loading."""
     try:
         import numpy as np
+
         analysis_dir.mkdir(parents=True, exist_ok=True)
         for key, values in data.items():
             safe_name = key.lower().replace(" ", "_").replace("-", "_").replace(".", "")
-            np.save(str(analysis_dir / f"energy_{safe_name}.npy"), np.array(values, dtype=np.float64))
+            np.save(
+                str(analysis_dir / f"energy_{safe_name}.npy"), np.array(values, dtype=np.float64)
+            )
         # Save column names so we can reconstruct the dict
-        (analysis_dir / "energy_columns.json").write_text(
-            json.dumps(list(data.keys()), indent=2)
-        )
+        (analysis_dir / "energy_columns.json").write_text(json.dumps(list(data.keys()), indent=2))
     except Exception as exc:
         log.warning("Failed to save energy .npy cache: %s", exc)
 
@@ -121,6 +123,7 @@ def _load_energy_npy(analysis_dir: Path) -> dict[str, list] | None:
         return None
     try:
         import numpy as np
+
         columns = json.loads(cols_path.read_text())
         data: dict[str, list] = {}
         for key in columns:
@@ -348,8 +351,7 @@ def generate_ramachandran_png(
                 log.info("ramachandran: loaded %d frames", traj.n_frames)
                 _, phi_vals = mdtraj.compute_phi(traj)
                 _, psi_vals = mdtraj.compute_psi(traj)
-                log.info("ramachandran: phi shape=%s psi shape=%s",
-                         phi_vals.shape, psi_vals.shape)
+                log.info("ramachandran: phi shape=%s psi shape=%s", phi_vals.shape, psi_vals.shape)
                 if phi_vals.size > 0 and psi_vals.size > 0:
                     phi_arr = phi_vals[:, 0]
                     psi_arr = psi_vals[:, 0]
@@ -382,7 +384,9 @@ def generate_ramachandran_png(
                     analysis_dir.mkdir(parents=True, exist_ok=True)
                     np.save(str(phi_npy), phi_arr)
                     np.save(str(psi_npy), psi_arr)
-                    log.info("ramachandran: loaded from ramachandran.json (%d frames)", len(phi_arr))
+                    log.info(
+                        "ramachandran: loaded from ramachandran.json (%d frames)", len(phi_arr)
+                    )
             except Exception as e:
                 log.warning("ramachandran: failed to load ramachandran.json — %s", e)
 
@@ -399,11 +403,16 @@ def generate_ramachandran_png(
                 analysis_dir.mkdir(parents=True, exist_ok=True)
                 np.save(str(phi_npy), phi_arr)
                 np.save(str(psi_npy), psi_arr)
-                log.info("ramachandran: using COLVAR '%s'/'%s' (%d frames)",
-                         phi_key, psi_key, len(phi_arr))
+                log.info(
+                    "ramachandran: using COLVAR '%s'/'%s' (%d frames)",
+                    phi_key,
+                    psi_key,
+                    len(phi_arr),
+                )
             else:
-                log.warning("ramachandran: COLVAR has no phi/psi columns (found: %s)",
-                            list(cols.keys()))
+                log.warning(
+                    "ramachandran: COLVAR has no phi/psi columns (found: %s)", list(cols.keys())
+                )
         else:
             log.warning("ramachandran: COLVAR not found at %s", colvar_path)
 
@@ -423,21 +432,31 @@ def generate_ramachandran_png(
 
     try:
         import matplotlib  # type: ignore[import]
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt  # type: ignore[import]
 
         fig, ax = plt.subplots(figsize=(4.5, 4.5), facecolor="none")
         ax.set_facecolor("none")
-        h, xe, ye = np.histogram2d(phi_plot, psi_plot, bins=bins,
-                                   range=[[-np.pi, np.pi], [-np.pi, np.pi]])
+        h, xe, ye = np.histogram2d(
+            phi_plot, psi_plot, bins=bins, range=[[-np.pi, np.pi], [-np.pi, np.pi]]
+        )
         xc = (xe[:-1] + xe[1:]) / 2
         yc = (ye[:-1] + ye[1:]) / 2
         plot_data = np.where(h > 0, np.log10(h), np.nan) if log_scale else h
         ax.contourf(xc, yc, plot_data.T, levels=20, cmap=cmap)
         if show_start:
-            ax.plot(phi_arr[0], psi_arr[0], marker="*", markersize=14,
-                    color="white", alpha=0.8, markeredgecolor="black",
-                    markeredgewidth=0.8, zorder=10)
+            ax.plot(
+                phi_arr[0],
+                psi_arr[0],
+                marker="*",
+                markersize=14,
+                color="white",
+                alpha=0.8,
+                markeredgecolor="black",
+                markeredgewidth=0.8,
+                zorder=10,
+            )
         ax.set_xlabel("φ (rad)", color="#6b7280", fontsize=12)
         ax.set_ylabel("ψ (rad)", color="#6b7280", fontsize=12)
         ax.set_xlim(-np.pi, np.pi)
@@ -447,8 +466,7 @@ def generate_ramachandran_png(
             spine.set_edgecolor("#9ca3af")
         plt.tight_layout(pad=0.4)
         analysis_dir.mkdir(parents=True, exist_ok=True)
-        plt.savefig(str(png_path), dpi=dpi, bbox_inches="tight",
-                    facecolor="none", transparent=True)
+        plt.savefig(str(png_path), dpi=dpi, bbox_inches="tight", facecolor="none", transparent=True)
         plt.close(fig)
         log.info("ramachandran: PNG saved to %s", png_path)
         return str(png_path), None
@@ -486,8 +504,8 @@ def compute_custom_cvs(work_dir: str, cvs: list[dict], force: bool = False) -> d
     Returns:
         dict with 'time_ps', 'cv_labels', and one key per CV label with values
     """
-    import numpy as np
     import mdtraj
+    import numpy as np
 
     wd = Path(work_dir)
     analysis_dir = wd / "analysis"
@@ -574,13 +592,15 @@ def get_atom_list(work_dir: str) -> list[dict]:
             topology = mdtraj.load_topology(str(top_path))
             atoms = []
             for atom in topology.atoms:
-                atoms.append({
-                    "index": atom.index + 1,  # 1-based for PLUMED convention
-                    "name": atom.name,
-                    "element": atom.element.symbol if atom.element else "",
-                    "resName": atom.residue.name,
-                    "resSeq": atom.residue.resSeq,
-                })
+                atoms.append(
+                    {
+                        "index": atom.index + 1,  # 1-based for PLUMED convention
+                        "name": atom.name,
+                        "element": atom.element.symbol if atom.element else "",
+                        "resName": atom.residue.name,
+                        "resSeq": atom.residue.resSeq,
+                    }
+                )
             return atoms
         except Exception:
             continue

@@ -7,7 +7,6 @@ can read COLVAR, HILLS, EDR, and md.log files from the session work_dir.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -53,13 +52,11 @@ def _make_tools(work_dir: str):
         text = _safe_read(filename, max_lines=100_000)
         if text.startswith("File not found"):
             return text
-        lines = [l for l in text.splitlines() if not l.startswith("#")]
+        lines = [ln for ln in text.splitlines() if not ln.startswith("#")]
         if not lines:
             return "COLVAR file is empty or contains only comments."
         # parse header
-        header_line = next(
-            (l for l in text.splitlines() if l.startswith("#! FIELDS")), None
-        )
+        header_line = next((ln for ln in text.splitlines() if ln.startswith("#! FIELDS")), None)
         col_names = header_line.split()[2:] if header_line else []
         data_rows = []
         for line in lines[:50_000]:
@@ -96,9 +93,7 @@ def _make_tools(work_dir: str):
         text = _safe_read(filename, max_lines=100_000)
         if text.startswith("File not found"):
             return text
-        header = next(
-            (l for l in text.splitlines() if l.startswith("#! FIELDS")), ""
-        )
+        header = next((ln for ln in text.splitlines() if ln.startswith("#! FIELDS")), "")
         col_names = header.split()[2:] if header else []
         rows = []
         for line in text.splitlines():
@@ -115,23 +110,29 @@ def _make_tools(work_dir: str):
         # height column is typically the second-to-last
         h_idx = -2 if arr.shape[1] >= 3 else 0
         heights = arr[:, h_idx]
-        return json.dumps({
-            "n_hills": n,
-            "time_start_ps": float(arr[0, 0]) if arr.shape[1] > 0 else None,
-            "time_end_ps": float(arr[-1, 0]) if arr.shape[1] > 0 else None,
-            "height_first_100_mean": float(heights[:100].mean()),
-            "height_last_100_mean": float(heights[-100:].mean()),
-            "height_overall_mean": float(heights.mean()),
-            "columns": col_names,
-        }, indent=2)
+        return json.dumps(
+            {
+                "n_hills": n,
+                "time_start_ps": float(arr[0, 0]) if arr.shape[1] > 0 else None,
+                "time_end_ps": float(arr[-1, 0]) if arr.shape[1] > 0 else None,
+                "height_first_100_mean": float(heights[:100].mean()),
+                "height_last_100_mean": float(heights[-100:].mean()),
+                "height_overall_mean": float(heights.mean()),
+                "columns": col_names,
+            },
+            indent=2,
+        )
 
     @tool
-    def read_energy_stats(edr_filename: str = "ener.edr", terms: str = "Potential,Temperature") -> str:
+    def read_energy_stats(
+        edr_filename: str = "ener.edr", terms: str = "Potential,Temperature"
+    ) -> str:
         """Parse a GROMACS .edr energy file and return statistics for requested energy terms.
         terms: comma-separated list of GROMACS energy term names.
         Returns mean, std, and last value for each term.
         """
         import pyedr
+
         p = wd / edr_filename
         if not p.exists():
             return f"EDR file not found: {edr_filename}"
@@ -181,9 +182,7 @@ def _make_tools(work_dir: str):
                     ns_per_day = float(parts[idx])
                 except (ValueError, IndexError):
                     pass
-        return json.dumps(
-            {"step": step, "time_ps": time_ps, "ns_per_day": ns_per_day}, indent=2
-        )
+        return json.dumps({"step": step, "time_ps": time_ps, "ns_per_day": ns_per_day}, indent=2)
 
     @tool
     def read_fes_summary(filename: str = "fes.dat") -> str:
@@ -255,6 +254,7 @@ Use concrete numbers from the analysis — avoid vague statements.
 
 
 # ── Agent class ────────────────────────────────────────────────────────
+
 
 class AnalysisAgent:
     """LangChain specialist agent for MD results analysis."""
