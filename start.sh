@@ -3,8 +3,7 @@
 #
 # Usage:
 #   ./start.sh          Build frontend (if needed) + start FastAPI on :8000
-#   ./start.sh --dev    Dev mode: Next.js HMR on :3000 + FastAPI :8000 (auto-reload)
-#                       (instant hot-reload on frontend changes)
+#   ./start.sh --dev    Dev mode: FastAPI :8000 + file watcher (auto-rebuilds on changes)
 #   ./start.sh --build  Force-rebuild the frontend even if out/ exists
 
 set -e
@@ -58,25 +57,31 @@ fi
 if [ "$DEV" -eq 1 ]; then
   cleanup() {
     echo -e "\nShutting down..."
-    kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null
-    wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null
+    kill "$BACKEND_PID" "$WATCHER_PID" 2>/dev/null
+    wait "$BACKEND_PID" "$WATCHER_PID" 2>/dev/null
   }
   trap cleanup INT TERM
 
-  echo "Dev mode (HMR):"
-  echo "  Frontend → http://localhost:3000  (Next.js dev, instant HMR)"
-  echo "  Backend  → http://localhost:8000  (FastAPI, auto-reload)"
-  echo "  Open http://localhost:3000 in your browser."
+  # Ensure an initial build exists so FastAPI can serve something immediately
+  if [ ! -d "$OUT_DIR" ]; then
+    echo "Initial frontend build..."
+    npm --prefix "$FRONTEND_DIR" run build
+  fi
+
+  echo "Dev mode (watch + auto-rebuild):"
+  echo "  Server  → http://localhost:8000  (FastAPI, auto-reload)"
+  echo "  Watcher → rebuilds frontend on source changes"
+  echo "  Open http://localhost:8000 in your browser."
   echo ""
 
   cd "$REPO_ROOT"
   python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000 --reload &
   BACKEND_PID=$!
 
-  NEXT_DEV=1 npm --prefix "$FRONTEND_DIR" run dev &
-  FRONTEND_PID=$!
+  node "$FRONTEND_DIR/watch.mjs" &
+  WATCHER_PID=$!
 
-  wait "$BACKEND_PID" "$FRONTEND_PID"
+  wait "$BACKEND_PID" "$WATCHER_PID"
   exit 0
 fi
 

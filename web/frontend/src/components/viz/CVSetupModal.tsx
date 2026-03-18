@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles } from "@/lib/api";
+import { CV_PALETTE } from "@/lib/colors";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -25,7 +26,7 @@ export interface CVDefinitionOut {
 }
 
 const REQUIRED_ATOMS: Record<CVSlot["type"], number> = { distance: 2, angle: 3, dihedral: 4 };
-const CV_COLORS = ["#f59e0b", "#38bdf8", "#a78bfa"]; // amber, sky, violet
+const CV_COLORS = CV_PALETTE;
 const CV_TYPE_OPTIONS: { value: CVSlot["type"]; label: string; desc: string }[] = [
   { value: "distance", label: "Distance", desc: "2 atoms" },
   { value: "angle",    label: "Angle",    desc: "3 atoms" },

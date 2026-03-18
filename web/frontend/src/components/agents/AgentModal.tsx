@@ -132,11 +132,11 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
     accent: "blue",
   },
   analysis: {
-    title: "Results Analyser",
+    title: "Results Analyzer",
     description: "Reads COLVAR, HILLS, energy files, and md.log — assesses convergence and gives recommendations.",
     inputLabel: "Analysis focus (optional)",
     inputPlaceholder: "e.g. 'Focus on convergence of phi/psi' or leave blank for full analysis",
-    defaultInput: "Analyse the simulation results and assess convergence.",
+    defaultInput: "Analyze the simulation results and assess convergence.",
     accent: "emerald",
   },
   cv: {

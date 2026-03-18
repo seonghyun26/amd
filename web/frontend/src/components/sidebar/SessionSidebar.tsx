@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Shield, Bot, CircleCheck, CircleX } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
-import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
+import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
 import { palette } from "@/lib/colors";
@@ -216,16 +216,119 @@ function SessionItem({
 
 // ── Settings modal ──────────────────────────────────────────────────
 
+function ApiKeyRow({
+  label,
+  color,
+  value,
+  onChange,
+  placeholder,
+  onSave,
+  saving,
+  saved,
+  verified,
+  verifying,
+  onVerify,
+}: {
+  label: string;
+  color: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
+  verified: boolean | null;
+  verifying: boolean;
+  onVerify: () => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+          <span className={`w-2 h-2 rounded-full ${color} inline-block`} />
+          {label}
+        </label>
+        {verified !== null && (
+          <span className={`flex items-center gap-1 text-[10px] font-medium ${verified ? "text-emerald-500" : "text-red-400"}`}>
+            {verified ? <CircleCheck size={10} /> : <CircleX size={10} />}
+            {verified ? "Verified" : "Invalid"}
+          </span>
+        )}
+      </div>
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type={show ? "text" : "password"}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-8 transition-colors"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+          >
+            {show ? <EyeOff size={12} /> : <Eye size={12} />}
+          </button>
+        </div>
+        <button
+          onClick={async () => { await onSave(); onVerify(); }}
+          disabled={saving || !value}
+          className="px-2.5 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+        >
+          {saved ? <Check size={12} /> : saving ? "…" : "Save"}
+        </button>
+        <button
+          onClick={onVerify}
+          disabled={verifying || !value}
+          title="Verify key"
+          className="px-2 py-2 rounded-lg text-xs border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+        >
+          {verifying ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const AGENT_BACKENDS = [
+  { id: "anthropic", label: "Claude", color: "orange" },
+  { id: "openai",    label: "ChatGPT", color: "emerald" },
+  { id: "deepseek",  label: "DeepSeek", color: "blue" },
+] as const;
+
+type AgentBackendId = typeof AGENT_BACKENDS[number]["id"];
+
 function SettingsModal({ username, onClose }: { username: string; onClose: () => void }) {
   const { theme, toggle } = useTheme();
-  const [wandbKey, setWandbKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+
+  // API keys state
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [verified, setVerified] = useState<Record<string, boolean | null>>({});
+  const [verifying, setVerifying] = useState<Record<string, boolean>>({});
+
+  // Agent backbone
+  const [agentBackend, setAgentBackend] = useState<AgentBackendId>("anthropic");
 
   useEffect(() => {
-    getApiKeys(username).then(({ keys }) => {
-      setWandbKey(keys["wandb"] ?? "");
+    getApiKeys(username).then(({ keys: k }) => {
+      setKeys(k);
+      // Auto-verify stored keys
+      for (const svc of ["anthropic", "openai", "deepseek", "wandb"]) {
+        if (k[svc]) {
+          setVerifying((v) => ({ ...v, [svc]: true }));
+          verifyApiKey(username, svc)
+            .then((res) => setVerified((v) => ({ ...v, [svc]: res.valid })))
+            .catch(() => setVerified((v) => ({ ...v, [svc]: false })))
+            .finally(() => setVerifying((v) => ({ ...v, [svc]: false })));
+        }
+      }
+      // Restore agent backend preference
+      if (k["_agent_backend"]) setAgentBackend(k["_agent_backend"] as AgentBackendId);
     });
   }, [username]);
 
@@ -235,24 +338,50 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveKey = async (service: string) => {
+    setSaving((s) => ({ ...s, [service]: true }));
     try {
-      await setApiKey(username, "wandb", wandbKey);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      await setApiKey(username, service, keys[service] ?? "");
+      setSaved((s) => ({ ...s, [service]: true }));
+      setTimeout(() => setSaved((s) => ({ ...s, [service]: false })), 2000);
     } finally {
-      setSaving(false);
+      setSaving((s) => ({ ...s, [service]: false }));
     }
   };
+
+  const handleVerify = async (service: string) => {
+    setVerifying((v) => ({ ...v, [service]: true }));
+    setVerified((v) => ({ ...v, [service]: null }));
+    try {
+      const res = await verifyApiKey(username, service);
+      setVerified((v) => ({ ...v, [service]: res.valid }));
+    } catch {
+      setVerified((v) => ({ ...v, [service]: false }));
+    } finally {
+      setVerifying((v) => ({ ...v, [service]: false }));
+    }
+  };
+
+  const handleSetBackend = async (id: AgentBackendId) => {
+    setAgentBackend(id);
+    await setApiKey(username, "_agent_backend", id);
+  };
+
+  const setKeyValue = (service: string, value: string) => {
+    setKeys((k) => ({ ...k, [service]: value }));
+    setVerified((v) => ({ ...v, [service]: null }));
+  };
+
+  const gmxImage = "gromacs-plumed:latest";
+  const sysVersion = "0.1.0";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-[400px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-[420px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800">
               <Settings size={15} className="text-gray-500 dark:text-gray-400" />
@@ -264,7 +393,138 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
           </button>
         </div>
 
-        <div className="px-5 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6" style={{ scrollbarWidth: "thin" }}>
+
+          {/* ── Account ── */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow">
+                {username[0]?.toUpperCase() ?? "?"}
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{username}</div>
+                <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── API Keys ── */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">API Keys</h4>
+            <ApiKeyRow
+              label="Anthropic Claude"
+              color="bg-orange-400"
+              value={keys["anthropic"] ?? ""}
+              onChange={(v) => setKeyValue("anthropic", v)}
+              placeholder="sk-ant-..."
+              onSave={() => handleSaveKey("anthropic")}
+              saving={saving["anthropic"] ?? false}
+              saved={saved["anthropic"] ?? false}
+              verified={verified["anthropic"] ?? null}
+              verifying={verifying["anthropic"] ?? false}
+              onVerify={() => handleVerify("anthropic")}
+            />
+            <ApiKeyRow
+              label="OpenAI ChatGPT"
+              color="bg-emerald-400"
+              value={keys["openai"] ?? ""}
+              onChange={(v) => setKeyValue("openai", v)}
+              placeholder="sk-..."
+              onSave={() => handleSaveKey("openai")}
+              saving={saving["openai"] ?? false}
+              saved={saved["openai"] ?? false}
+              verified={verified["openai"] ?? null}
+              verifying={verifying["openai"] ?? false}
+              onVerify={() => handleVerify("openai")}
+            />
+            <ApiKeyRow
+              label="DeepSeek"
+              color="bg-blue-400"
+              value={keys["deepseek"] ?? ""}
+              onChange={(v) => setKeyValue("deepseek", v)}
+              placeholder="sk-..."
+              onSave={() => handleSaveKey("deepseek")}
+              saving={saving["deepseek"] ?? false}
+              saved={saved["deepseek"] ?? false}
+              verified={verified["deepseek"] ?? null}
+              verifying={verifying["deepseek"] ?? false}
+              onVerify={() => handleVerify("deepseek")}
+            />
+            <ApiKeyRow
+              label="Weights & Biases"
+              color="bg-yellow-400"
+              value={keys["wandb"] ?? ""}
+              onChange={(v) => setKeyValue("wandb", v)}
+              placeholder="Enter WandB API key"
+              onSave={() => handleSaveKey("wandb")}
+              saving={saving["wandb"] ?? false}
+              saved={saved["wandb"] ?? false}
+              verified={verified["wandb"] ?? null}
+              verifying={verifying["wandb"] ?? false}
+              onVerify={() => handleVerify("wandb")}
+            />
+          </div>
+
+          {/* ── Agent Backbone ── */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agent Backbone</h4>
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[36px]">
+              {AGENT_BACKENDS.map((b, i) => {
+                const isVerified = verified[b.id] === true;
+                const isActive = agentBackend === b.id;
+                const disabled = !isVerified;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => !disabled && handleSetBackend(b.id)}
+                    disabled={disabled}
+                    title={disabled ? `Add and verify your ${b.label} API key first` : `Use ${b.label} as agent backbone`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                      isActive && !disabled
+                        ? b.color === "orange"
+                          ? "bg-orange-100/60 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+                          : b.color === "emerald"
+                            ? "bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                            : "bg-blue-100/60 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : disabled
+                          ? "bg-gray-50 dark:bg-gray-800/40 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                          : "bg-gray-50 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    } ${i < AGENT_BACKENDS.length - 1 ? "border-r border-gray-200 dark:border-gray-700" : ""}`}
+                  >
+                    <Bot size={11} />
+                    {b.label}
+                    {isActive && !disabled && <Check size={10} />}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-600">
+              Only providers with a verified API key can be selected.
+            </p>
+          </div>
+
+          {/* ── System Info ── */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">System</h4>
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 divide-y divide-gray-100 dark:divide-gray-800">
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Version</span>
+                <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{sysVersion}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-xs text-gray-500 dark:text-gray-400">GROMACS</span>
+                <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{gmxImage}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Agent</span>
+                <span className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                  {AGENT_BACKENDS.find((b) => b.id === agentBackend)?.label ?? "Claude"}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* ── Appearance ── */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Appearance</h4>
@@ -287,55 +547,6 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
             </div>
           </div>
 
-          {/* ── Account ── */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow">
-                {username[0]?.toUpperCase() ?? "?"}
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{username}</div>
-                <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── API Keys ── */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">API Keys</h4>
-            <div className="space-y-2">
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-                <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
-                Weights & Biases
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showKey ? "text" : "password"}
-                    value={wandbKey}
-                    onChange={(e) => setWandbKey(e.target.value)}
-                    placeholder="Enter WandB API key"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-8 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-                  >
-                    {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
-                  </button>
-                </div>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-3 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
-                >
-                  {saved ? <Check size={12} /> : saving ? "…" : "Save"}
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, MousePointer2, ChevronDown, Zap, X } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
-import { getFileContent, listFiles } from "@/lib/api";
+import { getFileContent, listFiles, getMacroCvs } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { CV_PALETTE } from "@/lib/colors";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -28,7 +29,7 @@ export interface ConfigCV {
 }
 
 const REQUIRED_ATOMS: Record<CVSlot["type"], number> = { distance: 2, angle: 3, dihedral: 4 };
-const CV_COLORS = ["#f59e0b", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fb923c", "#818cf8", "#22d3ee"];
+const CV_COLORS = CV_PALETTE;
 const CV_TYPE_OPTIONS: { value: CVSlot["type"]; label: string }[] = [
   { value: "distance", label: "Distance" },
   { value: "angle",    label: "Angle" },
@@ -288,16 +289,27 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateSlots]);
 
-  // Update highlights
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shapeCompRef = useRef<any>(null);
+
+  // Update highlights — only show atoms for the active (selected) CV
   useEffect(() => {
     if (!componentRef.current) return;
+    // Remove old atom highlights
     for (const rep of highlightRepsRef.current) {
       try { componentRef.current.removeRepresentation(rep); } catch { /* ignore */ }
     }
     highlightRepsRef.current = [];
+    // Remove old shape (cylinder)
+    if (shapeCompRef.current) {
+      try { stageRef.current?.removeComponent(shapeCompRef.current); } catch { /* ignore */ }
+      shapeCompRef.current = null;
+    }
 
-    cvSlots.forEach((cv, cvIdx) => {
-      const color = CV_COLORS[cvIdx] ?? "#ffffff";
+    const cv = cvSlots[activeCvIdx];
+    if (cv) {
+      const color = CV_COLORS[activeCvIdx] ?? "#ffffff";
+      // Highlight atoms with spacefill
       cv.atoms.forEach((atom) => {
         if (!atom) return;
         try {
@@ -310,9 +322,41 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
           highlightRepsRef.current.push(rep);
         } catch { /* ignore */ }
       });
-    });
+
+      // For distance CVs with both atoms filled, draw a cylinder between them
+      if (cv.type === "distance" && cv.atoms[0] && cv.atoms[1] && window.NGL && stageRef.current) {
+        try {
+          const structure = componentRef.current.structure;
+          const ap1 = structure.getAtomProxy(cv.atoms[0].index - 1);
+          const ap2 = structure.getAtomProxy(cv.atoms[1].index - 1);
+          const pos1 = [ap1.x, ap1.y, ap1.z] as [number, number, number];
+          const pos2 = [ap2.x, ap2.y, ap2.z] as [number, number, number];
+
+          // Parse HSL or hex color to [r,g,b] 0-1
+          const parseColor = (c: string): [number, number, number] => {
+            const m = c.match(/hsl\(\s*(\d+),\s*(\d+)%,\s*(\d+)%\)/);
+            if (m) {
+              const h = Number(m[1]) / 360, s = Number(m[2]) / 100, l = Number(m[3]) / 100;
+              const a2 = s * Math.min(l, 1 - l);
+              const f = (n: number) => { const k = (n + h * 12) % 12; return l - a2 * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+              return [f(0), f(8), f(4)];
+            }
+            if (c.startsWith("#") && c.length >= 7) {
+              return [parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255];
+            }
+            return [1, 0.6, 0];
+          };
+
+          const shape = new window.NGL.Shape("cv-distance");
+          shape.addCylinder(pos1, pos2, parseColor(color), 0.08);
+          const shapeComp = stageRef.current.addComponentFromObject(shape);
+          shapeComp.addRepresentation("buffer", { opacity: 0.7 });
+          shapeCompRef.current = shapeComp;
+        } catch { /* ignore — structure may not support getAtomProxy */ }
+      }
+    }
     try { stageRef.current?.viewer?.requestRender?.(); } catch { /* ignore */ }
-  }, [cvSlots]);
+  }, [cvSlots, activeCvIdx, ready]);
 
   const addCV = () => {
     updateSlots((prev) => [...prev, makeEmptyCV(prev.length)]);
@@ -348,6 +392,45 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
       newAtoms[atomIdx] = info;
       return { ...cv, atoms: newAtoms };
     }));
+  };
+
+  const [macroOpen, setMacroOpen] = useState(false);
+  const [macroLoading, setMacroLoading] = useState<string | null>(null);
+
+  const MACRO_OPTIONS = [
+    { id: "all_ca_distance",         label: "All Cα distances",              desc: "Distance between every pair of Cα atoms" },
+    { id: "consecutive_ca_distance", label: "Consecutive Cα distances",      desc: "Distance between adjacent Cα atoms along the chain" },
+    { id: "backbone_torsion",        label: "Backbone torsion angles (φ/ψ)", desc: "φ and ψ dihedral angles for all residues" },
+  ];
+
+  const handleMacro = async (macroId: string) => {
+    setMacroLoading(macroId);
+    try {
+      const res = await getMacroCvs(sessionId, macroId);
+      if (res.cvs.length > 0) {
+        // Convert to CVSlots and append
+        const newSlots: CVSlot[] = res.cvs.map((cv, i) => {
+          const pickerType = PLUMED_TO_PICKER[cv.type] ?? "distance";
+          const needed = REQUIRED_ATOMS[pickerType];
+          const atoms: (AtomInfo | null)[] = Array(needed).fill(null);
+          for (let j = 0; j < Math.min(cv.atoms.length, needed); j++) {
+            const idx = cv.atoms[j];
+            if (idx > 0) atoms[j] = { index: idx, name: `#${idx}`, resName: "?", resSeq: 0 };
+          }
+          return { type: pickerType, atoms, label: cv.name || `CV${i + 1}` };
+        });
+        updateSlots((prev) => {
+          // If only one empty CV, replace it; otherwise append
+          const isEmpty = prev.length === 1 && prev[0].atoms.every((a) => a === null);
+          return isEmpty ? newSlots : [...prev, ...newSlots];
+        });
+        setMacroOpen(false);
+      }
+    } catch (e) {
+      console.error("Macro CV failed:", e);
+    } finally {
+      setMacroLoading(null);
+    }
   };
 
   const activeCV = cvSlots[activeCvIdx];
@@ -486,15 +569,56 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
           })}
         </div>
 
-        {/* Bottom: Add CV */}
-        <div className="px-3 py-2.5 border-t border-gray-200/60 dark:border-gray-800 flex-shrink-0">
-          <button
-            onClick={addCV}
-            className="w-full py-1.5 rounded-lg text-[10px] font-medium border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition-colors flex items-center justify-center gap-1"
-          >
-            <Plus size={10} />
-            Add CV
-          </button>
+        {/* Bottom: Add CV + Macro */}
+        <div className="px-3 py-2.5 border-t border-gray-200/60 dark:border-gray-800 flex-shrink-0 relative">
+          <div className="flex gap-1.5">
+            <button
+              onClick={addCV}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition-colors flex items-center justify-center gap-1"
+            >
+              <Plus size={10} />
+              Add CV
+            </button>
+            <button
+              onClick={() => setMacroOpen((v) => !v)}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-dashed border-amber-300 dark:border-amber-700 text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500 transition-colors flex items-center justify-center gap-1"
+            >
+              <Zap size={10} />
+              Macro
+            </button>
+          </div>
+
+          {/* Macro popup */}
+          {macroOpen && (
+            <div className="absolute bottom-full right-0 mb-1.5 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">CV Macros</span>
+                <button onClick={() => setMacroOpen(false)} className="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                  <X size={10} />
+                </button>
+              </div>
+              <div className="p-1.5 space-y-0.5">
+                {MACRO_OPTIONS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleMacro(m.id)}
+                    disabled={macroLoading !== null}
+                    className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 group"
+                  >
+                    <div className="flex items-center gap-2">
+                      {macroLoading === m.id ? (
+                        <Loader2 size={10} className="animate-spin text-amber-500 flex-shrink-0" />
+                      ) : (
+                        <Zap size={10} className="text-amber-400 flex-shrink-0" />
+                      )}
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">{m.label}</span>
+                    </div>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5 ml-[18px]">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

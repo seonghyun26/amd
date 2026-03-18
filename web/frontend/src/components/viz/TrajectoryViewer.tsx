@@ -628,7 +628,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                           onChange={(e) => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, factor: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
+                        <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
                       </div>
                       {/* Booleans */}
                       {(["antialias", "trim"] as const).map((key) => (
@@ -679,7 +679,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                           onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, factor: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.gif.factor}×</span>
+                        <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.gif.factor}×</span>
                       </div>
                       {/* Max frames */}
                       <div className="flex items-center gap-2">

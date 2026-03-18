@@ -78,6 +78,7 @@ import {
   generatePlumedFile,
   getMolecules,
   loadMolecule,
+  validateCheckpoint,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -315,17 +316,20 @@ const TABS = [
   { value: "molecule", label: "Molecule", icon: <FlaskConical size={14} /> },
   { value: "gromacs",  label: "GROMACS",  icon: <Cpu size={14} /> },
   { value: "method",   label: "Method",   icon: <Zap size={14} /> },
+  { value: "files",    label: "Files",    icon: <FileText size={14} /> },
 ];
 
 function PillTabs({
   active,
   onChange,
+  saveState = "idle",
 }: {
   active: string;
   onChange: (v: string) => void;
+  saveState?: "idle" | "saving" | "saved";
 }) {
   return (
-    <div className="flex gap-1 p-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+    <div className="flex items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
       {TABS.map(({ value, label, icon }) => (
         <button
           key={value}
@@ -340,6 +344,21 @@ function PillTabs({
           {label}
         </button>
       ))}
+      {/* Save state indicator — right side */}
+      <div className="ml-auto flex-shrink-0">
+        {saveState === "saving" && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-blue-400 pr-2">
+            <Loader2 size={12} className="animate-spin" />
+            Saving
+          </span>
+        )}
+        {saveState === "saved" && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 dark:text-emerald-400 pr-2">
+            <CheckCircle2 size={12} />
+            Saved
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -489,27 +508,27 @@ function FilePreviewModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-700 overflow-hidden"
+        className="bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
         style={{ width: "min(900px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 flex-shrink-0">
-          <span className="text-sm font-mono text-gray-200 truncate">{name}</span>
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <span className="text-sm font-mono text-gray-800 dark:text-gray-200 truncate">{name}</span>
           <div className="flex items-center gap-2 flex-shrink-0">
             <a
               href={downloadUrl(sessionId, path)}
               download={name}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               <Download size={12} />
               Download
             </a>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               <X size={15} />
             </button>
@@ -525,7 +544,7 @@ function FilePreviewModal({
               <a
                 href={downloadUrl(sessionId, path)}
                 download={name}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white text-sm transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-sm transition-colors"
               >
                 <Download size={13} /> Download
               </a>
@@ -536,7 +555,7 @@ function FilePreviewModal({
               <span className="text-sm">Loading…</span>
             </div>
           ) : (
-            <pre className="h-full overflow-auto p-4 text-[11px] font-mono text-gray-300 leading-relaxed whitespace-pre-wrap break-all bg-gray-950">
+            <pre className="h-full overflow-auto p-4 text-[11px] font-mono text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-950">
               {content}
             </pre>
           )}
@@ -944,25 +963,25 @@ function ResultCard({
       {/* Delete confirmation */}
       {confirmDelete && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setConfirmDelete(false)}
         >
           <div
-            className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-72"
+            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-sm font-semibold text-gray-200 mb-1">Remove plot?</p>
-            <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-300">{label}</span> plot will be removed from the results panel.</p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
+            <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">{label}</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { setConfirmDelete(false); onDelete(); }}
-                className="px-3 py-1.5 rounded-lg text-xs border border-red-800/60 bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
               >
                 Remove
               </button>
@@ -1382,13 +1401,13 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-200 mb-1">Remove plot?</p>
-            <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
+            <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors">Cancel</button>
-              <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-800/60 bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors">Remove</button>
+              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+              <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
             </div>
           </div>
         </div>
@@ -1738,6 +1757,210 @@ function SimRunConfirmModal({
   );
 }
 
+// ── Files tab ──────────────────────────────────────────────────────────
+
+function FilesTab({ sessionId }: { sessionId: string }) {
+  const [simFiles, setSimFiles] = useState<string[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveFiles, setArchiveFiles] = useState<string[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [restoringPath, setRestoringPath] = useState<string | null>(null);
+
+  const refreshFiles = useCallback(() => {
+    setSimFiles([]);
+    setFilesLoading(true);
+    listFiles(sessionId)
+      .then(({ files }) => { setSimFiles(files.filter((f) => !isMolFile(f))); })
+      .catch(() => {})
+      .finally(() => setFilesLoading(false));
+  }, [sessionId]);
+
+  const refreshArchive = useCallback(() => {
+    setArchiveLoading(true);
+    listArchiveFiles(sessionId)
+      .then(({ files }) => setArchiveFiles(files))
+      .catch(() => {})
+      .finally(() => setArchiveLoading(false));
+  }, [sessionId]);
+
+  useEffect(() => { refreshFiles(); }, [refreshFiles]);
+  useEffect(() => { if (showArchive) refreshArchive(); }, [showArchive, refreshArchive]);
+
+  const handleDelete = async (path: string) => {
+    setDeleteTarget(null);
+    setDeletingPath(path);
+    try { await deleteFile(sessionId, path); } catch { /* ignore */ }
+    setDeletingPath(null);
+    refreshFiles();
+    if (showArchive) refreshArchive();
+  };
+
+  const handleRestore = async (path: string) => {
+    setRestoringPath(path);
+    try { await restoreFile(sessionId, path); } catch { /* ignore */ }
+    setRestoringPath(null);
+    refreshFiles();
+    refreshArchive();
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <Section
+        icon={<FileText size={13} />}
+        title={`Files${simFiles.length > 0 ? ` (${simFiles.length})` : ""}`}
+        accent="emerald"
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowArchive((v) => !v)}
+              className={`p-1 transition-colors ${showArchive ? "text-amber-400 hover:text-amber-300" : "text-gray-500 hover:text-gray-300"}`}
+              title="Show archived files"
+            >
+              <Archive size={15} />
+            </button>
+            <button
+              onClick={refreshFiles}
+              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={filesLoading ? "animate-spin" : ""} />
+            </button>
+            <a
+              href={downloadZipUrl(sessionId)}
+              download
+              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              title="Download all as ZIP"
+            >
+              <Download size={15} />
+            </a>
+          </div>
+        }
+      >
+        {simFiles.length === 0 ? (
+          <p className="text-xs text-gray-400 dark:text-gray-600 py-1">No simulation files yet.</p>
+        ) : (
+          <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
+            {simFiles.map((f) => {
+              const name = f.split("/").pop() ?? f;
+              const isDeleting = deletingPath === f;
+              return (
+                <div
+                  key={f}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
+                >
+                  <button
+                    onClick={() => setPreviewPath(f)}
+                    className="flex-1 text-left text-[13px] font-mono text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 truncate transition-colors"
+                    title={name}
+                  >
+                    {name}
+                  </button>
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button
+                      onClick={() => setPreviewPath(f)}
+                      title="Preview"
+                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <Eye size={12} />
+                    </button>
+                    <a
+                      href={downloadUrl(sessionId, f)}
+                      download={name}
+                      title="Download"
+                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <Download size={12} />
+                    </a>
+                    <button
+                      onClick={() => setDeleteTarget(f)}
+                      disabled={isDeleting}
+                      title="Move to archive"
+                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Archive panel */}
+        {showArchive && (
+          <div className="mt-2 pt-3 border-t border-gray-300/40 dark:border-gray-700/40">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Archive size={11} className="text-amber-500" />
+                <span className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-wider">
+                  Archive{archiveFiles.length > 0 ? ` (${archiveFiles.length})` : ""}
+                </span>
+              </div>
+              <button
+                onClick={refreshArchive}
+                className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                title="Refresh archive"
+              >
+                <RefreshCw size={11} className={archiveLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
+            {archiveLoading ? (
+              <div className="flex justify-center py-2">
+                <Loader2 size={14} className="animate-spin text-gray-600" />
+              </div>
+            ) : archiveFiles.length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-gray-600 py-1">Archive is empty.</p>
+            ) : (
+              <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                {archiveFiles.map((f) => {
+                  const name = f.split("/").pop() ?? f;
+                  const isRestoring = restoringPath === f;
+                  return (
+                    <div
+                      key={f}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
+                    >
+                      <span
+                        className="flex-1 text-[13px] font-mono text-gray-500 dark:text-gray-500 truncate"
+                        title={name}
+                      >
+                        {name}
+                      </span>
+                      <button
+                        onClick={() => handleRestore(f)}
+                        disabled={isRestoring}
+                        title="Restore to working directory"
+                        className="p-1 rounded text-gray-400 dark:text-gray-600 hover:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                      >
+                        {isRestoring ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {previewPath && (
+        <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />
+      )}
+      {deleteTarget && (
+        <DeleteConfirmPopup
+          name={deleteTarget.split("/").pop() ?? deleteTarget}
+          onConfirm={() => handleDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Progress tab ───────────────────────────────────────────────────────
 
 function ProgressTab({
@@ -1764,22 +1987,12 @@ function ProgressTab({
   systemName: string;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
-  const [simFiles, setSimFiles] = useState<string[]>([]);
   const [allFiles, setAllFiles] = useState<string[]>([]);
-  const [filesLoadedFor, setFilesLoadedFor] = useState(""); // tracks which sessionId allFiles belongs to
+  const [filesLoadedFor, setFilesLoadedFor] = useState("");
   const [filesLoading, setFilesLoading] = useState(false);
-  const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [trajectoryKey, setTrajectoryKey] = useState(0);
   const [addPlotOpen, setAddPlotOpen] = useState(false);
   const [cvSetupOpen, setCvSetupOpen] = useState(false);
-
-  // Archive panel
-  const [showArchive, setShowArchive] = useState(false);
-  const [archiveFiles, setArchiveFiles] = useState<string[]>([]);
-  const [archiveLoading, setArchiveLoading] = useState(false);
-  const [restoringPath, setRestoringPath] = useState<string | null>(null);
   const [liveProgress, setLiveProgress] = useState<{ step: number; time_ps: number; ns_per_day: number } | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const normalizeProgress = (p: { step?: unknown; time_ps?: unknown; ns_per_day?: unknown } | null | undefined) => {
@@ -1795,27 +2008,16 @@ function ProgressTab({
   };
 
   const refreshFiles = useCallback(() => {
-    // Clear stale files immediately so old session's trajectory doesn't linger
     setAllFiles([]);
-    setSimFiles([]);
     setFilesLoadedFor("");
     setFilesLoading(true);
     listFiles(sessionId)
       .then(({ files }) => {
         setAllFiles(files);
-        setSimFiles(files.filter((f) => !isMolFile(f)));
         setFilesLoadedFor(sessionId);
       })
       .catch(() => {})
       .finally(() => setFilesLoading(false));
-  }, [sessionId]);
-
-  const refreshArchive = useCallback(() => {
-    setArchiveLoading(true);
-    listArchiveFiles(sessionId)
-      .then(({ files }) => setArchiveFiles(files))
-      .catch(() => {})
-      .finally(() => setArchiveLoading(false));
   }, [sessionId]);
 
   useEffect(() => {
@@ -1861,39 +2063,6 @@ function ProgressTab({
       if (intervalProgress) clearInterval(intervalProgress);
     };
   }, [sessionId, runStatus]);
-
-  // Load archive list whenever the panel is opened
-  useEffect(() => {
-    if (showArchive) refreshArchive();
-  }, [showArchive, refreshArchive]);
-
-  const handleDelete = async (path: string) => {
-    setDeleteTarget(null);
-    setDeletingPath(path);
-    try {
-      await deleteFile(sessionId, path);
-      setSimFiles((prev) => prev.filter((f) => f !== path));
-      // Keep archive list in sync if the panel is open
-      if (showArchive) refreshArchive();
-    } catch {
-      // silently ignore — file listing will be stale but not broken
-    } finally {
-      setDeletingPath(null);
-    }
-  };
-
-  const handleRestore = async (path: string) => {
-    setRestoringPath(path);
-    try {
-      await restoreFile(sessionId, path);
-      setArchiveFiles((prev) => prev.filter((f) => f !== path));
-      refreshFiles();
-    } catch {
-      // silently ignore
-    } finally {
-      setRestoringPath(null);
-    }
-  };
 
   // Only use file lists that were fetched for the current session to avoid
   // a stale-render window where allFiles still belongs to a previous session.
@@ -2023,10 +2192,10 @@ function ProgressTab({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setAgentOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100/40 dark:hover:bg-emerald-900/30 transition-colors font-medium"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
             >
-              <Bot size={12} />
-              Analyse
+              <Bot size={11} />
+              Analyze
             </button>
             <button
               onClick={() => setAddPlotOpen(true)}
@@ -2104,171 +2273,8 @@ function ProgressTab({
         />
       )}
 
-      {/* Files section */}
-      <Section
-        icon={<FileText size={13} />}
-        title={`Files${simFiles.length > 0 ? ` (${simFiles.length})` : ""}`}
-        accent="emerald"
-        action={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowArchive((v) => !v)}
-              className={`p-1 transition-colors ${showArchive ? "text-amber-400 hover:text-amber-300" : "text-gray-500 hover:text-gray-300"}`}
-              title="Show archived files"
-            >
-              <Archive size={15} />
-            </button>
-            <button
-              onClick={refreshFiles}
-              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={15} className={filesLoading ? "animate-spin" : ""} />
-            </button>
-            <a
-              href={downloadZipUrl(sessionId)}
-              download
-              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
-              title="Download all as ZIP"
-            >
-              <Download size={15} />
-            </a>
-          </div>
-        }
-      >
-        {simFiles.length === 0 ? (
-          <p className="text-xs text-gray-400 dark:text-gray-600 py-1">No simulation files yet.</p>
-        ) : (
-          <div className="space-y-0.5 max-h-56 overflow-y-auto">
-            {simFiles.map((f) => {
-              const name = f.split("/").pop() ?? f;
-              const isDeleting = deletingPath === f;
-              return (
-                <div
-                  key={f}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
-                >
-                  {/* Filename — click to preview */}
-                  <button
-                    onClick={() => setPreviewPath(f)}
-                    className="flex-1 text-left text-[13px] font-mono text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 truncate transition-colors"
-                    title={name}
-                  >
-                    {name}
-                  </button>
-
-                  {/* Action buttons — visible on hover */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button
-                      onClick={() => setPreviewPath(f)}
-                      title="Preview"
-                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <Eye size={12} />
-                    </button>
-                    <a
-                      href={downloadUrl(sessionId, f)}
-                      download={name}
-                      title="Download"
-                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <Download size={12} />
-                    </a>
-                    <button
-                      onClick={() => setDeleteTarget(f)}
-                      disabled={isDeleting}
-                      title="Move to archive"
-                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Archive panel */}
-        {showArchive && (
-          <div className="mt-2 pt-3 border-t border-gray-300/40 dark:border-gray-700/40">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Archive size={11} className="text-amber-500" />
-                <span className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-wider">
-                  Archive{archiveFiles.length > 0 ? ` (${archiveFiles.length})` : ""}
-                </span>
-              </div>
-              <button
-                onClick={refreshArchive}
-                className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-                title="Refresh archive"
-              >
-                <RefreshCw size={11} className={archiveLoading ? "animate-spin" : ""} />
-              </button>
-            </div>
-
-            {archiveLoading ? (
-              <div className="flex justify-center py-2">
-                <Loader2 size={14} className="animate-spin text-gray-600" />
-              </div>
-            ) : archiveFiles.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-600 py-1">Archive is empty.</p>
-            ) : (
-              <div className="space-y-0.5 max-h-40 overflow-y-auto">
-                {archiveFiles.map((f) => {
-                  const name = f.split("/").pop() ?? f;
-                  const isRestoring = restoringPath === f;
-                  return (
-                    <div
-                      key={f}
-                      className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
-                    >
-                      <span
-                        className="flex-1 text-[13px] font-mono text-gray-500 dark:text-gray-500 truncate"
-                        title={name}
-                      >
-                        {name}
-                      </span>
-                      <button
-                        onClick={() => handleRestore(f)}
-                        disabled={isRestoring}
-                        title="Restore to working directory"
-                        className="p-1 rounded text-gray-400 dark:text-gray-600 hover:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
-                      >
-                        {isRestoring ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <RotateCcw size={12} />
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </Section>
-
       {agentOpen && (
         <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
-      )}
-
-      {previewPath && (
-        <FilePreviewModal
-          sessionId={sessionId}
-          path={previewPath}
-          onClose={() => setPreviewPath(null)}
-        />
-      )}
-
-      {deleteTarget && (
-        <DeleteConfirmPopup
-          name={deleteTarget.split("/").pop() ?? deleteTarget}
-          onConfirm={() => handleDelete(deleteTarget)}
-          onCancel={() => setDeleteTarget(null)}
-        />
       )}
     </div>
   );
@@ -2676,12 +2682,14 @@ function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string
 }
 
 function GromacsTab({
+  sessionId,
   cfg,
   onChange,
   onSave,
   saveState,
   runStatus,
 }: {
+  sessionId: string;
   cfg: Record<string, unknown>;
   onChange: (k: string, v: unknown) => void;
   onSave: () => void;
@@ -2692,33 +2700,33 @@ function GromacsTab({
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
   const system  = (cfg.system  ?? {}) as Record<string, unknown>;
   const isLocked = runStatus === "running" || runStatus === "finished";
+  const [agentOpen, setAgentOpen] = useState(false);
 
   return (
     <div className="p-4 space-y-4">
-      {isLocked && (
-        <div className="flex items-center justify-end">
-          <span className="inline-flex items-center gap-1.5 text-xs text-amber-500 dark:text-amber-400">
-            <Lock size={12} />
-            Locked after simulation started
-          </span>
+      {/* Sticky header with agent button */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-1.5 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-b border-gray-200/80 dark:border-gray-800/80">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">GROMACS Parameters</h3>
+          <div className="flex items-center gap-2">
+            {!isLocked && (
+              <button
+                onClick={() => setAgentOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+              >
+                <Bot size={11} />
+                Suggest Settings
+              </button>
+            )}
+            {isLocked && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
+                <Lock size={12} />
+                Locked
+              </span>
+            )}
+          </div>
         </div>
-      )}
-      {!isLocked && saveState === "saving" && (
-        <div className="flex items-center justify-end">
-          <span className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-blue-400">
-            <Loader2 size={12} className="animate-spin" />
-            Saving
-          </span>
-        </div>
-      )}
-      {!isLocked && saveState === "saved" && (
-        <div className="flex items-center justify-end">
-          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 dark:text-emerald-400">
-            <CheckCircle2 size={12} />
-            Saved
-          </span>
-        </div>
-      )}
+      </div>
 
       <fieldset disabled={isLocked} className={isLocked ? "space-y-4 opacity-70" : "space-y-4"}>
         {/* System */}
@@ -2836,6 +2844,10 @@ function GromacsTab({
 
       {/* Advanced — outside fieldset so toggle works when locked */}
       <AdvancedSection cfg={cfg} onChange={onChange} onSave={onSave} isLocked={isLocked} />
+
+      {agentOpen && (
+        <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
+      )}
     </div>
   );
 }
@@ -3205,8 +3217,12 @@ function MethodTab({
   const [agentOpen, setAgentOpen] = useState(false);
   const [cvMode, setCvMode] = useState<"manual" | "mlcv">("manual");
   const [mlCheckpoints, setMlCheckpoints] = useState<string[]>([]);
-  const [mlSelectedCkpt, setMlSelectedCkpt] = useState<string>("");
+  const [mlSelectedCkpt, setMlSelectedCkpt] = useState<string>(
+    String((cvsCfg as Record<string, unknown>).mlcv_checkpoint ?? "")
+  );
   const [mlInputCvs, setMlInputCvs] = useState<Set<number>>(new Set());
+  const [ckptValidation, setCkptValidation] = useState<Record<string, { valid: boolean; is_jit: boolean; n_inputs: number | null; n_outputs: number | null; error: string | null }>>({});
+  const [ckptValidating, setCkptValidating] = useState<string | null>(null);
   const [plumedPreview, setPlumedPreview] = useState<string | null>(null);
   const [plumedLoading, setPlumedLoading] = useState(false);
   const [plumedMessage, setPlumedMessage] = useState<string | null>(null);
@@ -3214,6 +3230,7 @@ function MethodTab({
   const [initialContent, setInitialContent] = useState<string | null>(null);
   const [targetContent, setTargetContent] = useState<string | null>(null);
   const [plumedRevision, setPlumedRevision] = useState(0);
+  const [plumedPopupOpen, setPlumedPopupOpen] = useState(false);
   const isLocked = runStatus === "running" || runStatus === "finished";
 
   // Load PDB/structure files for steered MD initial/target selection
@@ -3231,7 +3248,12 @@ function MethodTab({
         return ["pt", "ckpt", "pth"].includes(ext);
       }).map((f) => f.split("/").pop() ?? f);
       setMlCheckpoints(ckpts);
-      if (ckpts.length > 0 && !mlSelectedCkpt) setMlSelectedCkpt(ckpts[0]);
+      // Clear selection if the selected checkpoint was deleted
+      if (mlSelectedCkpt && !ckpts.includes(mlSelectedCkpt)) {
+        setMlSelectedCkpt("");
+        onChange("plumed.collective_variables.mlcv_checkpoint", "");
+        saveAndRefreshPlumed();
+      }
     }).catch(() => {});
   }, [sessionId, fileRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3320,6 +3342,48 @@ function MethodTab({
     saveAndRefreshPlumed();
   };
 
+  const handleToggleCkpt = async (ckpt: string) => {
+    // Deselect
+    if (mlSelectedCkpt === ckpt) {
+      setMlSelectedCkpt("");
+      onChange("plumed.collective_variables.mlcv_checkpoint", "");
+      onChange("plumed.collective_variables.mlcv_n_outputs", null);
+      saveAndRefreshPlumed();
+      return;
+    }
+    // Validate before selecting
+    setCkptValidating(ckpt);
+    try {
+      const res = await validateCheckpoint(sessionId, ckpt);
+      setCkptValidation((v) => ({ ...v, [ckpt]: res }));
+      if (res.valid) {
+        setMlSelectedCkpt(ckpt);
+        onChange("plumed.collective_variables.mlcv_checkpoint", ckpt);
+        // Store n_outputs so backend can generate correct PLUMED without torch
+        if (res.n_outputs != null) {
+          onChange("plumed.collective_variables.mlcv_n_outputs", res.n_outputs);
+        }
+        saveAndRefreshPlumed();
+      }
+    } catch {
+      setCkptValidation((v) => ({ ...v, [ckpt]: { valid: false, is_jit: false, n_inputs: null, n_outputs: null, error: "Validation request failed" } }));
+    } finally {
+      setCkptValidating(null);
+    }
+  };
+
+  const handleDeleteCkpt = async (ckpt: string) => {
+    try {
+      await deleteFile(sessionId, ckpt);
+    } catch { /* ignore */ }
+    if (mlSelectedCkpt === ckpt) {
+      setMlSelectedCkpt("");
+      onChange("plumed.collective_variables.mlcv_checkpoint", "");
+      saveAndRefreshPlumed();
+    }
+    setFileRefreshKey((n) => n + 1);
+  };
+
   const handlePreviewPlumed = async () => {
     setPlumedLoading(true);
     setPlumedMessage(null);
@@ -3358,12 +3422,32 @@ function MethodTab({
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
             <span className="text-gray-500 dark:text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
           </h3>
-          {isLocked && (
-            <span className="inline-flex items-center gap-1 text-xs text-amber-400">
-              <Lock size={11} />
-              Locked
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {needsPlumed && !isLocked && (
+              <button
+                onClick={() => setAgentOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+              >
+                <Bot size={11} />
+                Suggest CVs
+              </button>
+            )}
+            {needsPlumed && (
+              <button
+                onClick={() => { handlePreviewPlumed(); setPlumedPopupOpen(true); }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-50 dark:bg-amber-900/30 border border-amber-200/60 dark:border-amber-800/50 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-800/40 transition-colors"
+              >
+                <FileText size={11} />
+                Preview PLUMED
+              </button>
+            )}
+            {isLocked && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-400">
+                <Lock size={11} />
+                Locked
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -3420,8 +3504,16 @@ function MethodTab({
               <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Bias factor <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">γ</span></label>
               <input type="number" step="any" value={String(hills.biasfactor ?? "")} onChange={(e) => onChange("method.hills.biasfactor", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Temperature <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">K</span></label>
+              <input type="number" step="any" value={String(method.temperature ?? "")} onChange={(e) => onChange("method.temperature", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">HILLS file</label>
+              <input value={String(hills.hills_file ?? "HILLS")} onChange={(e) => onChange("method.hills.hills_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">Well-tempered: γ 5–15. Leave empty for standard MetaD.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">Well-tempered: set γ 5–15 + temperature. Leave empty for standard MetaD.</p>
         </Section>
         </fieldset>
       )}
@@ -3435,7 +3527,7 @@ function MethodTab({
               <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">COLVAR file</label>
               <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
@@ -3458,7 +3550,37 @@ function MethodTab({
               <input type="number" step="any" value={String(method.temperature ?? 340)} onChange={(e) => onChange("method.temperature", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">OPES_METAD: adaptive kernel-based enhanced sampling.</p>
+          <div className="h-px bg-gray-200 dark:bg-gray-800 my-2" />
+          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Output Files</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Kernels file</label>
+              <input value={String(method.kernels_file ?? "KERNELS")} onChange={(e) => onChange("method.kernels_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">State file</label>
+              <input value={String(method.state_wfile ?? "STATE")} onChange={(e) => onChange("method.state_wfile", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">State write stride <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(method.state_wstride ?? 500000)} onChange={(e) => onChange("method.state_wstride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Store states</label>
+              <div className="flex items-center h-[30px]">
+                <button
+                  type="button"
+                  onClick={() => { onChange("method.store_states", !(method.store_states ?? true)); saveAndRefreshPlumed(); }}
+                  className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${
+                    (method.store_states ?? true) ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"
+                  }`}
+                >
+                  <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-[left] duration-200" style={{ left: (method.store_states ?? true) ? "18px" : "2px" }} />
+                </button>
+                <span className="ml-2 text-xs text-gray-500">{(method.store_states ?? true) ? "On" : "Off"}</span>
+              </div>
+            </div>
+          </div>
         </Section>
         </fieldset>
       )}
@@ -3501,19 +3623,8 @@ function MethodTab({
 
       {/* Collective Variables — always shown for PLUMED methods */}
       {needsPlumed && (
-        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <Section icon={<Search size={11} />} title={`Collective Variables (${cvs.length})`} accent="emerald"
-          action={!isLocked ? (
-            <button
-              onClick={() => setAgentOpen(true)}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-indigo-50/60 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100/60 dark:hover:bg-indigo-800/40 transition-colors"
-            >
-              <Bot size={10} />
-              Suggest
-            </button>
-          ) : undefined}
-        >
-          {/* Descriptors / MLCVs toggle */}
+        <Section icon={<Search size={11} />} title={`Collective Variables (${cvs.length})`} accent="emerald">
+          {/* Descriptors / MLCVs toggle — always interactive even when locked */}
           <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[30px] mb-3">
             <button
               type="button"
@@ -3541,6 +3652,7 @@ function MethodTab({
             </button>
           </div>
 
+          <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
           {cvMode === "manual" ? (
             /* Interactive 3D atom picker — inline, synced with config */
             <InlineCVPicker
@@ -3555,8 +3667,15 @@ function MethodTab({
             <div className="flex gap-4">
               {/* Left: Checkpoint files — same size as the 3D viewer in Descriptors */}
               <div className="flex flex-col flex-shrink-0 rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/80 dark:bg-gray-900/50 overflow-hidden" style={{ width: "360px", height: "400px" }}>
-                <div className="px-3 py-2 border-b border-gray-200/60 dark:border-gray-800">
+                <div className="px-3 py-2 border-b border-gray-200/60 dark:border-gray-800 flex items-center justify-between">
                   <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Checkpoints</p>
+                  <button
+                    onClick={() => setFileRefreshKey((n) => n + 1)}
+                    className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                    title="Refresh checkpoints"
+                  >
+                    <RefreshCw size={11} />
+                  </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarWidth: "thin" }}>
@@ -3566,20 +3685,73 @@ function MethodTab({
                       <p className="text-[9px] text-gray-400 dark:text-gray-600">No .pt / .ckpt / .pth files.<br />Upload below.</p>
                     </div>
                   ) : (
-                    mlCheckpoints.map((ckpt) => (
-                      <button
-                        key={ckpt}
-                        onClick={() => setMlSelectedCkpt(ckpt)}
-                        className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors text-[10px] ${
-                          mlSelectedCkpt === ckpt
-                            ? "bg-violet-100/50 dark:bg-violet-900/30 border border-violet-300/60 dark:border-violet-700/50 text-violet-700 dark:text-violet-300"
-                            : "bg-white/40 dark:bg-gray-800/30 border border-gray-200/60 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-800/50"
-                        }`}
-                      >
-                        <Archive size={10} className="flex-shrink-0" />
-                        <span className="font-mono truncate">{ckpt}</span>
-                      </button>
-                    ))
+                    mlCheckpoints.map((ckpt) => {
+                      const isSelected = mlSelectedCkpt === ckpt;
+                      const isValidating = ckptValidating === ckpt;
+                      const vResult = ckptValidation[ckpt];
+                      const hasFailed = vResult && !vResult.valid;
+                      const hasWarning = vResult?.valid && vResult.is_jit === null; // torch not available
+                      return (
+                        <div key={ckpt} className="space-y-0.5">
+                          <div
+                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-colors text-[10px] group ${
+                              isSelected
+                                ? "bg-violet-100/50 dark:bg-violet-900/30 border border-violet-300/60 dark:border-violet-700/50 text-violet-700 dark:text-violet-300"
+                                : hasFailed
+                                  ? "bg-red-50/50 dark:bg-red-900/20 border border-red-300/60 dark:border-red-800/50 text-red-600 dark:text-red-400"
+                                  : "bg-white/40 dark:bg-gray-800/30 border border-gray-200/60 dark:border-gray-800 text-gray-600 dark:text-gray-400"
+                            }`}
+                          >
+                            <Archive size={10} className="flex-shrink-0" />
+                            <span className="font-mono truncate flex-1 min-w-0">{ckpt}</span>
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              {/* Validation info badge */}
+                              {isSelected && vResult?.valid && !hasWarning && (
+                                <span className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[8px] font-medium whitespace-nowrap">
+                                  JIT {vResult.n_inputs != null ? `${vResult.n_inputs}→${vResult.n_outputs}` : ""}
+                                </span>
+                              )}
+                              {isSelected && hasWarning && (
+                                <span className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[8px] font-medium whitespace-nowrap">
+                                  Unverified
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleToggleCkpt(ckpt)}
+                                disabled={isValidating}
+                                title={isSelected ? "Deselect checkpoint" : "Validate & use this checkpoint"}
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                                  isSelected
+                                    ? "bg-violet-500 text-white hover:bg-violet-600"
+                                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/30"
+                                } disabled:opacity-50`}
+                              >
+                                {isValidating ? <Loader2 size={9} className="animate-spin" /> : isSelected ? "Active" : "Select"}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCkpt(ckpt)}
+                                title="Delete checkpoint"
+                                className="p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          </div>
+                          {/* Validation error message */}
+                          {hasFailed && (
+                            <div className="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 border border-red-200/40 dark:border-red-800/30">
+                              <p className="text-[8px] text-red-500 dark:text-red-400 leading-relaxed">{vResult.error}</p>
+                            </div>
+                          )}
+                          {/* Warning when torch is not available */}
+                          {isSelected && hasWarning && vResult?.error && (
+                            <div className="px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200/40 dark:border-amber-800/30">
+                              <p className="text-[8px] text-amber-500 dark:text-amber-400 leading-relaxed">{vResult.error}</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
@@ -3651,16 +3823,32 @@ function MethodTab({
                 </div>
 
                 <div className="px-2 py-2 border-t border-gray-200/60 dark:border-gray-800 flex-shrink-0">
-                  <div className="text-[9px] text-gray-400 dark:text-gray-600 text-center">
-                    {mlInputCvs.size > 0 ? `${mlInputCvs.size} descriptor${mlInputCvs.size > 1 ? "s" : ""} selected` : "No descriptors selected"}
-                    {mlSelectedCkpt ? ` · ${mlSelectedCkpt}` : ""}
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] text-gray-400 dark:text-gray-600">
+                      {mlInputCvs.size > 0 ? `${mlInputCvs.size} descriptor${mlInputCvs.size > 1 ? "s" : ""} selected` : "No descriptors selected"}
+                      {mlSelectedCkpt ? ` · ${mlSelectedCkpt}` : ""}
+                    </div>
+                    {mlInputCvs.size > 0 && !isLocked && (
+                      <button
+                        onClick={() => {
+                          const remaining = cvs.filter((_, i) => !mlInputCvs.has(i));
+                          onChange("plumed.collective_variables.cvs", remaining);
+                          setMlInputCvs(new Set());
+                          saveAndRefreshPlumed();
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-medium border border-red-200/60 dark:border-red-800/50 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        <Trash2 size={9} />
+                        Delete ({mlInputCvs.size})
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           )}
+          </fieldset>
         </Section>
-        </fieldset>
       )}
 
       {isSteered && (
@@ -3751,48 +3939,87 @@ function MethodTab({
         </fieldset>
       )}
 
-      {/* PLUMED file — shown directly with refresh/download */}
-      {needsPlumed && (
-        <Section
-          icon={<FileText size={11} />}
-          title="PLUMED Input File"
-          accent="amber"
-          action={
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handlePreviewPlumed}
-                disabled={plumedLoading}
-                title="Refresh preview"
-                className="p-1 rounded text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-              >
-                {plumedLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              </button>
-              <button
-                onClick={handleGeneratePlumed}
-                disabled={plumedLoading || isLocked}
-                title="Generate plumed.dat"
-                className="p-1 rounded text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-              >
-                <Download size={11} />
-              </button>
+      {/* PLUMED preview popup modal */}
+      {plumedPopupOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPlumedPopupOpen(false)} />
+          <div className="relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                  <FileText size={14} className="text-amber-600 dark:text-amber-400" />
+                </div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">PLUMED Input File</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handlePreviewPlumed}
+                  disabled={plumedLoading}
+                  title="Refresh preview"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  {plumedLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!plumedPreview) return;
+                    const blob = new Blob([plumedPreview], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "plumed.dat";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  disabled={!plumedPreview}
+                  title="Download plumed.dat"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  <Download size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    handleGeneratePlumed();
+                  }}
+                  disabled={plumedLoading || isLocked}
+                  title="Write plumed.dat to session"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors disabled:opacity-50"
+                >
+                  Generate
+                </button>
+                <button
+                  onClick={() => setPlumedPopupOpen(false)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
-          }
-        >
-          {plumedLoading ? (
-            <div className="flex items-center justify-center py-6 text-gray-600">
-              <Loader2 size={14} className="animate-spin mr-2" />
-              <span className="text-xs">Loading…</span>
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {plumedLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-500">
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  <span className="text-sm">Generating preview…</span>
+                </div>
+              ) : plumedPreview ? (
+                <pre className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl p-4 overflow-x-auto font-mono whitespace-pre">
+                  {plumedPreview}
+                </pre>
+              ) : (
+                <div className="py-12 text-center">
+                  <FileText size={24} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                  <p className="text-sm text-gray-400 dark:text-gray-600">{plumedMessage || "No PLUMED file generated yet."}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Define collective variables and method parameters first.</p>
+                </div>
+              )}
+              {plumedMessage && plumedPreview && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-3">{plumedMessage}</p>
+              )}
             </div>
-          ) : plumedPreview ? (
-            <pre className="text-[10px] leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-950 border border-gray-300/50 dark:border-gray-700/50 rounded-lg p-2.5 overflow-x-auto max-h-56 font-mono whitespace-pre">
-              {plumedPreview}
-            </pre>
-          ) : (
-            <div className="py-4 text-center">
-              <p className="text-xs text-gray-400 dark:text-gray-600">{plumedMessage || "No PLUMED file generated yet."}</p>
-            </div>
-          )}
-        </Section>
+          </div>
+        </div>
       )}
 
       {/* Plain MD note */}
@@ -3831,8 +4058,7 @@ function NewSessionForm({
     setError("");
     const nick = nickname.trim() || defaultNickname();
     const user = getUsername() || "default";
-    const folderName = defaultNickname();
-    const workDir = `outputs/${user}/${folderName}/data`;
+    const workDir = `outputs/${user}/${nick}/data`;
     try {
       const { session_id, work_dir, nickname: savedNick, seeded_files } = await createSession({
         workDir,
@@ -4408,9 +4634,11 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           />
         );
       case "gromacs":
-        return <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleGromacsSave} saveState={gromacsSaveState} runStatus={simRunStatus} />;
+        return <GromacsTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleGromacsSave} saveState={gromacsSaveState} runStatus={simRunStatus} />;
       case "method":
         return <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} runStatus={simRunStatus} />;
+      case "files":
+        return <FilesTab sessionId={sessionId} />;
       default:
         return null;
     }
@@ -4423,7 +4651,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full min-w-0">
-      <PillTabs active={activeTab} onChange={setActiveTab} />
+      <PillTabs active={activeTab} onChange={setActiveTab} saveState={gromacsSaveState} />
 
       <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading ? "flex flex-col" : ""}`}>
         {sessionLoading ? (

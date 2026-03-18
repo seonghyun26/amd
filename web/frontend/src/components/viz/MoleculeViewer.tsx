@@ -377,7 +377,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                         onChange={(e) => setExportSettings((s) => ({ ...s, factor: Number(e.target.value) }))}
                         className="flex-1 accent-indigo-500 h-1"
                       />
-                      <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.factor}×</span>
+                      <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.factor}×</span>
                     </div>
                     {/* Booleans */}
                     {(["antialias", "trim"] as const).map((key) => (

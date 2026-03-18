@@ -197,3 +197,88 @@ async def get_atoms(session_id: str):
         return {"atoms": atoms, "available": len(atoms) > 0}
     except Exception as e:
         return {"atoms": [], "available": False, "error": str(e)}
+
+
+@router.get("/sessions/{session_id}/analysis/macro-cvs")
+async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
+    """Generate predefined macro CV definitions from the topology.
+
+    macro values:
+      - all_ca_distance: DISTANCE between every pair of Cα atoms
+      - consecutive_ca_distance: DISTANCE between consecutive Cα atoms
+      - backbone_torsion: TORSION for backbone φ/ψ angles
+    """
+    session = _require_session(session_id)
+    try:
+        from web.backend.analysis_utils import get_atom_list
+        atoms = get_atom_list(str(session.work_dir))
+    except Exception as e:
+        raise HTTPException(500, f"Failed to load atom list: {e}")
+
+    # Filter Cα atoms
+    ca_atoms = [a for a in atoms if a["name"] == "CA"]
+
+    if macro == "all_ca_distance":
+        cvs = []
+        idx = 1
+        for i in range(len(ca_atoms)):
+            for j in range(i + 1, len(ca_atoms)):
+                a1, a2 = ca_atoms[i], ca_atoms[j]
+                cvs.append({
+                    "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
+                    "type": "DISTANCE",
+                    "atoms": [a1["index"], a2["index"]],
+                })
+                idx += 1
+        return {"cvs": cvs, "count": len(cvs)}
+
+    elif macro == "consecutive_ca_distance":
+        cvs = []
+        for i in range(len(ca_atoms) - 1):
+            a1, a2 = ca_atoms[i], ca_atoms[i + 1]
+            cvs.append({
+                "name": f"d_CA{a1['resSeq']}_{a2['resSeq']}",
+                "type": "DISTANCE",
+                "atoms": [a1["index"], a2["index"]],
+            })
+        return {"cvs": cvs, "count": len(cvs)}
+
+    elif macro == "backbone_torsion":
+        # Build backbone atom map per residue: {resSeq: {C, N, CA, ...}}
+        bb_names = {"N", "CA", "C"}
+        residues: dict[int, dict[str, int]] = {}
+        for a in atoms:
+            if a["name"] in bb_names:
+                residues.setdefault(a["resSeq"], {})[a["name"]] = a["index"]
+
+        sorted_res = sorted(residues.keys())
+        cvs = []
+
+        for k in range(len(sorted_res)):
+            res_i = sorted_res[k]
+            r = residues[res_i]
+
+            # φ (phi): C(i-1) - N(i) - CA(i) - C(i)
+            if k > 0:
+                prev = residues[sorted_res[k - 1]]
+                if all(x in prev for x in ["C"]) and all(x in r for x in ["N", "CA", "C"]):
+                    cvs.append({
+                        "name": f"phi_{res_i}",
+                        "type": "TORSION",
+                        "atoms": [prev["C"], r["N"], r["CA"], r["C"]],
+                    })
+
+            # ψ (psi): N(i) - CA(i) - C(i) - N(i+1)
+            if k < len(sorted_res) - 1:
+                nxt = residues[sorted_res[k + 1]]
+                if all(x in r for x in ["N", "CA", "C"]) and "N" in nxt:
+                    cvs.append({
+                        "name": f"psi_{res_i}",
+                        "type": "TORSION",
+                        "atoms": [r["N"], r["CA"], r["C"], nxt["N"]],
+                    })
+
+        return {"cvs": cvs, "count": len(cvs)}
+
+    else:
+        raise HTTPException(400, f"Unknown macro: {macro}. Use: all_ca_distance, consecutive_ca_distance, backbone_torsion")

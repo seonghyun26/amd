@@ -8,10 +8,12 @@ GET /api/agents/{session_id}/cv?input=...         → CVAgent
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from web.backend.db import get_api_keys
 from web.backend.session_manager import get_session
 
 router = APIRouter()
@@ -41,6 +43,13 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
         raise HTTPException(404, "Session not found")
 
     work_dir = session.work_dir
+
+    # Inject user's stored Anthropic key into the environment if available
+    if session.username:
+        user_keys = get_api_keys(session.username)
+        anthropic_key = user_keys.get("anthropic", "")
+        if anthropic_key:
+            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
 
     async def event_generator():
         try:

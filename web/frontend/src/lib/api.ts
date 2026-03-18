@@ -290,6 +290,13 @@ export async function getAtomList(
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/atoms`));
 }
 
+export async function getMacroCvs(
+  sessionId: string,
+  macro: string
+): Promise<{ cvs: { name: string; type: string; atoms: number[] }[]; count: number }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/macro-cvs?macro=${encodeURIComponent(macro)}`));
+}
+
 export async function updateResultCards(sessionId: string, resultCards: unknown[]): Promise<void> {
   await fetch(`${BASE}/sessions/${sessionId}/result-cards`, {
     method: "POST",
@@ -310,6 +317,24 @@ export async function generatePlumedFile(
   sessionId: string
 ): Promise<{ generated: string; work_dir: string }> {
   const res = await fetch(`${BASE}/sessions/${sessionId}/plumed-generate`, { method: "POST" });
+  return json(res);
+}
+
+export async function validateCheckpoint(
+  sessionId: string,
+  filename: string
+): Promise<{
+  valid: boolean;
+  is_jit: boolean;
+  n_inputs: number | null;
+  n_outputs: number | null;
+  error: string | null;
+  keys?: string[];
+}> {
+  const res = await fetch(
+    `${BASE}/sessions/${sessionId}/validate-checkpoint?filename=${encodeURIComponent(filename)}`,
+    { method: "POST" }
+  );
   return json(res);
 }
 
@@ -383,6 +408,17 @@ export async function setApiKey(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: apiKey }),
     }
+  );
+  return json(res);
+}
+
+export async function verifyApiKey(
+  username: string,
+  service: string
+): Promise<{ valid: boolean; error: string | null }> {
+  const res = await fetch(
+    `${BASE}/users/${encodeURIComponent(username)}/api-keys/${encodeURIComponent(service)}/verify`,
+    { method: "POST" }
   );
   return json(res);
 }
