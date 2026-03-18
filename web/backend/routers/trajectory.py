@@ -27,8 +27,8 @@ from web.backend.session_manager import get_or_restore_session
 
 router = APIRouter()
 
-# Simple in-process cache: xtc_path → frame count
-_frame_count_cache: dict[str, int] = {}
+# Simple in-process cache: xtc_path → (mtime, frame_count)
+_frame_count_cache: dict[str, tuple[float, int]] = {}
 
 
 def _decode_paths(combined_b64: str) -> tuple[str, str]:
@@ -60,8 +60,15 @@ def _resolve_file(path_str: str, work: Path) -> Path:
 
 def _count_frames(xtc_path: Path, top_path: Path) -> int:
     key = str(xtc_path)
-    if key in _frame_count_cache:
-        return _frame_count_cache[key]
+    try:
+        current_mtime = xtc_path.stat().st_mtime
+    except Exception:
+        current_mtime = 0.0
+    cached = _frame_count_cache.get(key)
+    if cached is not None:
+        cached_mtime, cached_count = cached
+        if cached_mtime == current_mtime:
+            return cached_count
     import mdtraj
 
     try:
@@ -70,7 +77,7 @@ def _count_frames(xtc_path: Path, top_path: Path) -> int:
     except Exception:
         traj = mdtraj.load(str(xtc_path), top=str(top_path))
         n = traj.n_frames
-    _frame_count_cache[key] = n
+    _frame_count_cache[key] = (current_mtime, n)
     return n
 
 

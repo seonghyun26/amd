@@ -214,7 +214,12 @@ def colvar_to_columns(colvar_path: str) -> dict[str, list[float]]:
     if not rows:
         return {}
     keys = list(rows[0].keys())
-    return {k: [r[k] for r in rows] for k in keys}
+    # Single-pass transpose instead of K separate iterations
+    columns: dict[str, list[float]] = {k: [] for k in keys}
+    for r in rows:
+        for k in keys:
+            columns[k].append(r[k])
+    return columns
 
 
 def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:

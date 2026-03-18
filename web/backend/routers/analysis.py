@@ -259,7 +259,6 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
 
     if macro == "all_ca_distance":
         cvs = []
-        idx = 1
         for i in range(len(ca_atoms)):
             for j in range(i + 1, len(ca_atoms)):
                 a1, a2 = ca_atoms[i], ca_atoms[j]
@@ -270,7 +269,6 @@ async def get_macro_cvs(session_id: str, macro: str = "all_ca_distance"):
                         "atoms": [a1["index"], a2["index"]],
                     }
                 )
-                idx += 1
         return {"cvs": cvs, "count": len(cvs)}
 
     elif macro == "consecutive_ca_distance":

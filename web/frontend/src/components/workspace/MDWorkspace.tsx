@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Settings,
@@ -1224,6 +1224,13 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   const [plotSettings, setPlotSettings] = useState<Required<RamachandranPlotSettings>>({ ...RAMACHANDRAN_DEFAULTS });
   const accentColor = "#06b6d4";
 
+  // Revoke blob URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      setImgSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  }, []);
+
   // Close settings on outside click
   useEffect(() => {
     if (!settingsOpen) return;
@@ -2097,25 +2104,28 @@ function ProgressTab({
     };
   }, [sessionId, runStatus]);
 
-  // Only use file lists that were fetched for the current session to avoid
-  // a stale-render window where allFiles still belongs to a previous session.
-  const _freshFiles = filesLoadedFor === sessionId ? allFiles : [];
-  const _allNames = _freshFiles.map((f) => ({
-    path: f,
-    normalizedPath: f.replace(/\\/g, "/").toLowerCase(),
-    name: fileBaseName(f),
-    lower: fileBaseName(f).toLowerCase(),
-  }));
-  const trajectoryFile = _allNames.find((f) => f.normalizedPath.includes("/simulation/") && f.lower.endsWith(".xtc"))
-    ?? _allNames.find((f) => f.lower.endsWith(".xtc"))
-    ?? _allNames.find((f) => f.normalizedPath.includes("/simulation/") && f.lower.endsWith(".trr"))
-    ?? _allNames.find((f) => f.lower.endsWith(".trr"));
-  const topologyFile = _allNames.find((f) => f.lower.endsWith("_ionized.gro"))
-    ?? _allNames.find((f) => f.lower.endsWith("_solvated.gro"))
-    ?? _allNames.find((f) => f.lower.endsWith("_box.gro"))
-    ?? _allNames.find((f) => f.lower.endsWith("_system.gro"))
-    ?? _allNames.find((f) => f.lower.endsWith(".gro"))
-    ?? _allNames.find((f) => f.lower.endsWith(".pdb"));
+  // Only use file lists that were fetched for the current session — memoized to avoid
+  // rebuilding on every 1-second nowMs tick during running simulations.
+  const { trajectoryFile, topologyFile } = useMemo(() => {
+    const freshFiles = filesLoadedFor === sessionId ? allFiles : [];
+    const names = freshFiles.map((f) => ({
+      path: f,
+      normalizedPath: f.replace(/\\/g, "/").toLowerCase(),
+      name: fileBaseName(f),
+      lower: fileBaseName(f).toLowerCase(),
+    }));
+    const traj = names.find((f) => f.normalizedPath.includes("/simulation/") && f.lower.endsWith(".xtc"))
+      ?? names.find((f) => f.lower.endsWith(".xtc"))
+      ?? names.find((f) => f.normalizedPath.includes("/simulation/") && f.lower.endsWith(".trr"))
+      ?? names.find((f) => f.lower.endsWith(".trr"));
+    const topo = names.find((f) => f.lower.endsWith("_ionized.gro"))
+      ?? names.find((f) => f.lower.endsWith("_solvated.gro"))
+      ?? names.find((f) => f.lower.endsWith("_box.gro"))
+      ?? names.find((f) => f.lower.endsWith("_system.gro"))
+      ?? names.find((f) => f.lower.endsWith(".gro"))
+      ?? names.find((f) => f.lower.endsWith(".pdb"));
+    return { trajectoryFile: traj, topologyFile: topo };
+  }, [allFiles, filesLoadedFor, sessionId]);
   const targetSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? totalSteps : 0;
   const pctRaw = targetSteps > 0 && liveProgress
     ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
@@ -3336,13 +3346,17 @@ function MethodTab({
 
   // Auto-save and refresh plumed preview when CVs change (debounced)
   const cvsLenRef = useRef(cvs.length);
-  const cvsAtomsRef = useRef("");
+  const cvsInitRef = useRef(false);
+  const cvsAtomsRef = useRef(
+    cvs.map((c) => `${c.name}|${c.type}|${(c.atoms ?? []).join(",")}`).join(";")
+  );
   useEffect(() => {
-    // Build a lightweight fingerprint instead of JSON.stringify (avoids circular ref crashes)
     const fp = cvs.map((c) => `${c.name}|${c.type}|${(c.atoms ?? []).join(",")}`).join(";");
     if (fp === cvsAtomsRef.current && cvs.length === cvsLenRef.current) return;
     cvsAtomsRef.current = fp;
     cvsLenRef.current = cvs.length;
+    // Skip save on initial mount — only save on actual user changes
+    if (!cvsInitRef.current) { cvsInitRef.current = true; return; }
     const timer = setTimeout(() => {
       onSave();
       if (needsPlumed) setPlumedRevision((r) => r + 1);

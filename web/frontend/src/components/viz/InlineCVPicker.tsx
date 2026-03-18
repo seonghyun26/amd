@@ -365,18 +365,25 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
   }, [cvSlots, activeCvIdx, ready]);
 
   const addCV = () => {
-    updateSlots((prev) => [...prev, makeEmptyCV(prev.length)]);
-    setActiveCvIdx(cvSlots.length); // will be the new last index
-    setActiveAtomIdx(0);
+    let newLen = 0;
+    updateSlots((prev) => {
+      const next = [...prev, makeEmptyCV(prev.length)];
+      newLen = next.length;
+      return next;
+    });
+    // Use queueMicrotask so the state from updateSlots is committed first
+    queueMicrotask(() => { setActiveCvIdx(newLen - 1); setActiveAtomIdx(0); });
   };
 
   const removeCV = (idx: number) => {
+    let clampedIdx = 0;
     updateSlots((prev) => {
       const newSlots = prev.filter((_, i) => i !== idx).map((cv, i) => ({ ...cv, label: `CV${i + 1}` }));
-      return newSlots.length === 0 ? [makeEmptyCV(0)] : newSlots;
+      const result = newSlots.length === 0 ? [makeEmptyCV(0)] : newSlots;
+      clampedIdx = Math.min(idx, result.length - 1);
+      return result;
     });
-    setActiveCvIdx(Math.min(activeCvIdx, Math.max(0, cvSlots.length - 2)));
-    setActiveAtomIdx(0);
+    queueMicrotask(() => { setActiveCvIdx(clampedIdx); setActiveAtomIdx(0); });
   };
 
   const changeCVType = (cvIdx: number, newType: CVSlot["type"]) => {
@@ -497,7 +504,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
                 {/* CV header */}
                 <div
                   className="flex items-center justify-between px-3 py-2 cursor-pointer"
-                  onClick={() => { setActiveCvIdx(cvIdx); setActiveAtomIdx(cv.atoms.findIndex((a) => a === null) ?? 0); }}
+                  onClick={() => { setActiveCvIdx(cvIdx); const ei = cv.atoms.findIndex((a) => a === null); setActiveAtomIdx(ei >= 0 ? ei : 0); }}
                 >
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
