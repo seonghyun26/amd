@@ -281,6 +281,7 @@ async def start_simulation(session_id: str):
             _remove_existing(work_dir, ionized_gro, solvated_gro, box_gro, "ions.tpr", "mdout.mdp")
 
             # B1. Add simulation box using configured clearance
+            box_type = str(OmegaConf.select(cfg, "gromacs.box_type") or "cubic")
             r = gmx.run_gmx_command(
                 "editconf",
                 [
@@ -292,7 +293,7 @@ async def start_simulation(session_id: str):
                     "-d",
                     str(box_clearance),
                     "-bt",
-                    "dodecahedron",
+                    box_type,
                 ],
                 work_dir=str(work_dir),
             )

@@ -43,30 +43,56 @@ _DATA_MOLECULES = _REPO_ROOT / "data" / "molecule"
 _SYSTEM_DIR: dict[str, str] = {
     "ala_dipeptide": "alanine_dipeptide",
     "chignolin": "chignolin",
+    "trp_cage": "trp-cage",
+    "bba": "bba",
+    "villin": "villin",
 }
 _MOL_EXTS = {".pdb", ".gro", ".mol2", ".xyz", ".sdf"}
+_CKPT_EXTS = {".pt", ".ckpt", ".pth"}
+
+# Maps molecule system id → subdirectory name under data/model/
+_DATA_MODELS = _REPO_ROOT / "data" / "model"
+_MODEL_DIR: dict[str, str] = {
+    "ala_dipeptide": "alanine_dipeptide",
+    "chignolin": "chignolin",
+    "trp_cage": "trp-cage",
+    "villin": "villin",
+    "bba": "BBA",
+}
 
 
 def _seed_files(work_dir: str, preset: str, system: str, state: str = "") -> list[str]:
-    """Copy molecule files from data/molecule/{system}/ into work_dir.
+    """Copy molecule files from data/molecule/{system}/ and model checkpoints
+    from data/model/{system}/ into work_dir.
     When state is provided, only the matching state file is copied.
     Returns a list of copied file names (relative to work_dir)."""
     import shutil
 
     seeded: list[str] = []
+    # Seed molecule files
     dir_name = _SYSTEM_DIR.get(system)
-    if not dir_name:
-        return seeded
-    src_dir = _DATA_MOLECULES / dir_name
-    if not src_dir.is_dir():
-        return seeded
-    for src in sorted(src_dir.iterdir()):
-        if src.is_file() and src.suffix.lower() in _MOL_EXTS:
-            if state and src.stem != state:
-                continue
-            dest = Path(work_dir) / src.name
-            shutil.copy2(src, dest)
-            seeded.append(src.name)
+    if dir_name:
+        src_dir = _DATA_MOLECULES / dir_name
+        if src_dir.is_dir():
+            for src in sorted(src_dir.iterdir()):
+                if src.is_file() and src.suffix.lower() in _MOL_EXTS:
+                    if state and src.stem != state:
+                        continue
+                    dest = Path(work_dir) / src.name
+                    shutil.copy2(src, dest)
+                    seeded.append(src.name)
+
+    # Seed pre-built MLCV checkpoints
+    model_dir_name = _MODEL_DIR.get(system)
+    if model_dir_name:
+        model_src = _DATA_MODELS / model_dir_name
+        if model_src.is_dir():
+            for src in sorted(model_src.iterdir()):
+                if src.is_file() and src.suffix.lower() in _CKPT_EXTS:
+                    dest = Path(work_dir) / src.name
+                    shutil.copy2(src, dest)
+                    seeded.append(src.name)
+
     return seeded
 
 
@@ -128,6 +154,9 @@ async def create_session_endpoint(req: CreateSessionRequest):
     _HYDRA_SYSTEM_MAP: dict[str, str] = {
         "ala_dipeptide": "ala_dipeptide",
         "chignolin": "protein",
+        "trp_cage": "protein",
+        "bba": "protein",
+        "villin": "protein",
         "blank": "protein",
     }
     hydra_system = _HYDRA_SYSTEM_MAP.get(molecule_system) or cfg_defaults["system"]
@@ -155,7 +184,9 @@ async def create_session_endpoint(req: CreateSessionRequest):
     # If a structure file was seeded, update system.coordinates so the UI
     # can auto-load the correct molecule on session open.
     _STRUCT_EXTS = {".pdb", ".gro", ".mol2", ".xyz"}
-    seeded_struct = next((f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS), None)
+    seeded_structs = [f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS]
+    # Prefer unfolded conformations as starting structure for enhanced sampling
+    seeded_struct = next((f for f in seeded_structs if "unfolded" in f.lower()), None) or next(iter(seeded_structs), None)
     if seeded_struct:
         try:
             from omegaconf import OmegaConf as _OC

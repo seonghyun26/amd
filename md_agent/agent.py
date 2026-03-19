@@ -183,6 +183,27 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["input_tpr", "output_tpr"],
         },
     },
+    {
+        "name": "check_gromacs_energy",
+        "description": (
+            "Extract energy terms from a .edr file using gmx energy. "
+            "Returns parsed stdout with selected energy averages."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "edr_file": {"type": "string", "description": "Path to the .edr file"},
+                "terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Energy terms to extract (e.g. ['Potential', 'Temperature', 'Pressure'])",
+                },
+                "begin_time": {"type": "number", "default": 0.0, "description": "Start time in ps"},
+                "end_time": {"type": "number", "default": -1.0, "description": "End time in ps (-1 = all)"},
+            },
+            "required": ["edr_file", "terms"],
+        },
+    },
     # ── PLUMED ──
     {
         "name": "generate_plumed_metadynamics",
@@ -597,6 +618,7 @@ class MDAgent:
             "wait_mdrun": gmx.wait_mdrun,
             "run_gmx_command": gmx.run_gmx_command,
             "convert_tpr": gmx.convert_tpr,
+            "check_gromacs_energy": gmx.check_gromacs_energy,
             # PLUMED
             "generate_plumed_metadynamics": plumed.generate_metadynamics,
             "generate_plumed_umbrella": plumed.generate_umbrella,

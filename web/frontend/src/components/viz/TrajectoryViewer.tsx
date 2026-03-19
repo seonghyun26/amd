@@ -118,6 +118,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef                     = useRef<HTMLDivElement>(null);
 
+  const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [exportSettings, setExportSettings] = useState({
     screenshot: { factor: 6, antialias: true,  trim: false, background: "white" as ExportBg },
     gif:        { factor: 1, antialias: true, trim: false, background: "white" as ExportBg, maxFrames: 60, frameDelay: 80 },
@@ -298,6 +300,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       cancelled = true;
       if (scriptEl && loadHandler) scriptEl.removeEventListener("load", loadHandler);
       try { playerRef.current?.pause?.(); } catch { /* ignore */ }
+      if (seekTimerRef.current) clearTimeout(seekTimerRef.current);
       ro?.disconnect();
       if (stageRef.current) { stageRef.current.dispose(); stageRef.current = null; }
       componentRef.current    = null;
@@ -333,8 +336,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     try {
       playerRef.current?.pause?.();
       setPlaying(false);
-      trajectoryRef.current.setFrame(clamped);
+      // Update slider position immediately for smooth UX
       setFrame(clamped);
+      // Debounce the actual NGL setFrame call (which triggers a server POST)
+      if (seekTimerRef.current) clearTimeout(seekTimerRef.current);
+      seekTimerRef.current = setTimeout(() => {
+        trajectoryRef.current?.setFrame(clamped);
+      }, 150);
     } catch { /* ignore */ }
   };
 

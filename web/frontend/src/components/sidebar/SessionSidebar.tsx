@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Shield, Bot, CircleCheck, CircleX } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
-import { palette } from "@/lib/colors";
+
 
 interface Props {
   onNewSession: () => void;
@@ -243,52 +243,43 @@ function ApiKeyRow({
 }) {
   const [show, setShow] = useState(false);
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-          <span className={`w-2 h-2 rounded-full ${color} inline-block`} />
-          {label}
-        </label>
-        {verified !== null && (
-          <span className={`flex items-center gap-1 text-[10px] font-medium ${verified ? "text-emerald-500" : "text-red-400"}`}>
-            {verified ? <CircleCheck size={10} /> : <CircleX size={10} />}
-            {verified ? "Verified" : "Invalid"}
-          </span>
-        )}
-      </div>
-      <div className="flex gap-1.5">
-        <div className="relative flex-1">
-          <input
-            type={show ? "text" : "password"}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-8 transition-colors"
-          />
-          <button
-            type="button"
-            onClick={() => setShow((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-          >
-            {show ? <EyeOff size={12} /> : <Eye size={12} />}
-          </button>
-        </div>
+    <div className="flex items-center gap-1.5">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 w-[72px] flex-shrink-0">
+        <span className={`w-2 h-2 rounded-full ${color} inline-block flex-shrink-0`} />
+        <span className="truncate">{label}</span>
+      </label>
+      <div className="relative flex-1 min-w-0">
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-7 transition-colors"
+        />
         <button
-          onClick={async () => { await onSave(); onVerify(); }}
-          disabled={saving || !value}
-          className="px-2.5 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
         >
-          {saved ? <Check size={12} /> : saving ? "…" : "Save"}
-        </button>
-        <button
-          onClick={onVerify}
-          disabled={verifying || !value}
-          title="Verify key"
-          className="px-2 py-2 rounded-lg text-xs border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
-        >
-          {verifying ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
+          {show ? <EyeOff size={11} /> : <Eye size={11} />}
         </button>
       </div>
+      <button
+        onClick={async () => { await onSave(); onVerify(); }}
+        disabled={saving || !value}
+        className="px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors flex-shrink-0"
+      >
+        {saved ? <Check size={12} /> : saving ? "…" : "Save"}
+      </button>
+      {verified !== null ? (
+        <span className={`flex-shrink-0 ${verified ? "text-emerald-500" : "text-red-400"}`} title={verified ? "Verified" : "Invalid"}>
+          {verified ? <CircleCheck size={14} /> : <CircleX size={14} />}
+        </span>
+      ) : verifying ? (
+        <Loader2 size={14} className="animate-spin text-gray-400 flex-shrink-0" />
+      ) : (
+        <span className="w-[14px] flex-shrink-0" />
+      )}
     </div>
   );
 }

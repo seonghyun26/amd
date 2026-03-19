@@ -72,6 +72,13 @@ class GROMACSRunner:
                 "-v",
                 f"{work_dir.resolve()}:/work",
             ]
+            # Mount custom force fields (e.g. charmm36m) so GROMACS can find them
+            ff_dir = Path(__file__).parents[2] / "data" / "forcefields"
+            if ff_dir.is_dir():
+                docker_prefix += [
+                    "-v", f"{ff_dir.resolve()}:/ff_extra:ro",
+                    "-e", "GMXLIB=/ff_extra",
+                ]
             if gpu_id:
                 docker_prefix += ["--gpus", f"device={gpu_id}"]
             return docker_prefix + [self._docker_image, self.gmx] + gmx_args

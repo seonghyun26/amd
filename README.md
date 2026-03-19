@@ -37,7 +37,22 @@ docker pull gromacs-plumed:latest
 # docker build -t gromacs-plumed:latest .
 ```
 
-### 4. Environment variables
+### 4. CHARMM36m force field (optional)
+
+The Docker image includes AMBER and CHARMM27 but not CHARMM36m. To use CHARMM36m:
+
+```bash
+mkdir -p data/forcefields && cd data/forcefields
+wget "http://mackerell.umaryland.edu/download.php?filename=CHARMM_ff_params_files/charmm36-jul2022.ff.tgz" -O charmm36m.ff.tgz
+tar xzf charmm36m.ff.tgz
+mv charmm36-jul2022.ff charmm36m.ff
+rm charmm36m.ff.tgz
+cd ../..
+```
+
+The server automatically mounts `data/forcefields/` into the Docker container.
+
+### 5. Environment variables
 
 ```bash
 cp .env.example .env   # if .env.example exists, otherwise create .env manually

@@ -318,16 +318,16 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
     : "";
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl flex flex-col overflow-hidden"
+        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col overflow-hidden"
         style={{ width: "min(1100px, 95vw)", height: "min(680px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 bg-gray-800/80 border-b border-gray-700 flex-shrink-0">
-          <h2 className="text-sm font-semibold text-gray-200">Custom CV Analysis</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors">
+        <div className="flex items-center justify-between px-5 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Custom CV Analysis</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -335,7 +335,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
         {/* Body: two columns */}
         <div className="flex-1 flex min-h-0">
           {/* Left: NGL viewer */}
-          <div className="flex-1 flex flex-col min-w-0 border-r border-gray-800">
+          <div className="flex-1 flex flex-col min-w-0 border-r border-gray-200 dark:border-gray-800">
             <div className="flex-1 relative min-h-0">
               {loading && !ready && (
                 <div className="absolute inset-0 flex items-center justify-center text-gray-400 z-10">
@@ -351,23 +351,23 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
               <div ref={containerRef} className="w-full h-full" />
               {/* Hover tooltip */}
               {hoverInfo && ready && (
-                <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-gray-900/90 border border-gray-700 text-xs text-gray-300 font-mono pointer-events-none">
+                <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-white/90 dark:bg-gray-900/90 border border-gray-200 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 font-mono pointer-events-none">
                   {hoverInfo}
                 </div>
               )}
             </div>
             {/* Picking prompt bar */}
-            <div className="px-3 py-2 bg-gray-800/50 border-t border-gray-800 flex items-center gap-2 flex-shrink-0">
-              <MousePointer2 size={12} className="text-gray-500" />
-              <span className="text-[11px] text-gray-400">{pickingPrompt}</span>
+            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 flex-shrink-0">
+              <MousePointer2 size={12} className="text-gray-400 dark:text-gray-500" />
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">{pickingPrompt}</span>
             </div>
           </div>
 
           {/* Right: CV definition panel */}
-          <div className="w-[360px] flex-shrink-0 flex flex-col bg-gray-900/50">
-            <div className="px-4 py-3 border-b border-gray-800">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Collective Variables</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">Define up to 3 CVs. Click atoms on the viewer to select.</p>
+          <div className="w-[360px] flex-shrink-0 flex flex-col bg-gray-50/50 dark:bg-gray-900/50">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">Collective Variables</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5">Define up to 3 CVs. Click atoms on the viewer to select.</p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ scrollbarWidth: "thin" }}>
@@ -380,7 +380,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
                   <div
                     key={cvIdx}
                     className={`rounded-xl border transition-colors ${
-                      isActive ? "border-opacity-60" : "border-gray-800 hover:border-gray-700"
+                      isActive ? "border-opacity-60" : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
                     }`}
                     style={isActive ? { borderColor: `${color}60` } : undefined}
                   >
@@ -391,7 +391,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                        <span className="text-xs font-semibold text-gray-200">{cv.label}</span>
+                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{cv.label}</span>
                         {isFilled && (
                           <span className="text-[10px] text-gray-500 font-mono">{shortCVLabel(cv)}</span>
                         )}
@@ -402,7 +402,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
                           <select
                             value={cv.type}
                             onChange={(e) => changeCVType(cvIdx, e.target.value as CVSlot["type"])}
-                            className="appearance-none text-[10px] bg-gray-800 border border-gray-700 rounded-md pl-2 pr-5 py-0.5 text-gray-300 focus:outline-none focus:border-gray-500 cursor-pointer"
+                            className="appearance-none text-[10px] bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md pl-2 pr-5 py-0.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 cursor-pointer"
                           >
                             {CV_TYPE_OPTIONS.map((opt) => (
                               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -431,21 +431,21 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
                             onClick={() => setPickTarget(cvIdx, atomIdx)}
                             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors text-xs ${
                               isPickTarget
-                                ? "bg-gray-700/60"
+                                ? "bg-gray-200/60 dark:bg-gray-700/60"
                                 : atom
-                                  ? "bg-gray-800/40 hover:bg-gray-800/60"
-                                  : "bg-gray-800/20 hover:bg-gray-800/40 border border-dashed border-gray-700"
+                                  ? "bg-gray-100/40 dark:bg-gray-800/40 hover:bg-gray-200/60 dark:hover:bg-gray-800/60"
+                                  : "bg-gray-100/20 dark:bg-gray-800/20 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 border border-dashed border-gray-300 dark:border-gray-700"
                             }`}
                             style={isPickTarget ? { outlineColor: color, outlineWidth: "1px", outlineStyle: "solid" } : undefined}
                           >
                             <span className="text-[10px] text-gray-500 w-12 flex-shrink-0">Atom {atomIdx + 1}</span>
                             {atom ? (
                               <>
-                                <span className="font-mono text-gray-300">{atomLabel(atom)}</span>
-                                <span className="text-[10px] text-gray-600 ml-auto">#{atom.index}</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300">{atomLabel(atom)}</span>
+                                <span className="text-[10px] text-gray-400 dark:text-gray-600 ml-auto">#{atom.index}</span>
                               </>
                             ) : (
-                              <span className="text-gray-600 italic">
+                              <span className="text-gray-400 dark:text-gray-600 italic">
                                 {isPickTarget ? "Click on molecule…" : "Click to select"}
                               </span>
                             )}
@@ -459,11 +459,11 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
             </div>
 
             {/* Bottom controls */}
-            <div className="px-4 py-3 border-t border-gray-800 space-y-2 flex-shrink-0">
+            <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800 space-y-2 flex-shrink-0">
               <button
                 onClick={addCV}
                 disabled={cvSlots.length >= 3}
-                className="w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                className="w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
               >
                 <Plus size={12} />
                 Add CV ({cvSlots.length}/3)

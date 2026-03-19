@@ -145,7 +145,6 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
     setReady(false);
     setError(null);
     setStructInfo(null);
-    setReps(DEFAULT_REPS);
     const ext = fileName.split(".").pop()?.toLowerCase() ?? "pdb";
     let ro: ResizeObserver | null = null;
 

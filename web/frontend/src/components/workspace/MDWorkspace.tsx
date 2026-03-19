@@ -35,10 +35,10 @@ import {
   Search,
 } from "lucide-react";
 
-const AgentModal = dynamic(() => import("@/components/agents/AgentModal"), { ssr: false });
 import type { AgentType } from "@/lib/agentStream";
 import { getUsername } from "@/lib/auth";
 import dynamic from "next/dynamic";
+const AgentModal = dynamic(() => import("@/components/agents/AgentModal"), { ssr: false });
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 const TrajectoryViewer = dynamic(() => import("@/components/viz/TrajectoryViewer"), { ssr: false });
 const MoleculeViewer = dynamic(() => import("@/components/viz/MoleculeViewer"), { ssr: false });
@@ -79,6 +79,7 @@ import {
   getMolecules,
   loadMolecule,
   validateCheckpoint,
+  getColvar,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -147,6 +148,9 @@ interface SystemOption { id: string; label: string; description: string }
 const SYSTEMS: SystemOption[] = [
   { id: "ala_dipeptide", label: "Alanine Dipeptide",  description: "Blocked alanine dipeptide · Ace-Ala-Nme" },
   { id: "chignolin",     label: "Chignolin (CLN025)", description: "10-residue β-hairpin mini-protein"        },
+  { id: "trp_cage",      label: "Trp-cage (2JOF)",    description: "20-residue α-helical mini-protein"        },
+  { id: "bba",           label: "BBA (1FME)",         description: "28-residue ββα zinc-finger mini-protein"  },
+  { id: "villin",        label: "Villin (2F4K)",      description: "35-residue villin headpiece subdomain"     },
   { id: "blank",         label: "Blank",              description: "No system — configure manually"           },
 ];
 
@@ -156,6 +160,9 @@ const SYSTEM_LABELS: Record<string, string> = {
   protein:       "Protein",
   membrane:      "Membrane",
   chignolin:     "Chignolin",
+  trp_cage:      "Trp-cage",
+  bba:           "BBA",
+  villin:        "Villin",
 };
 
 // ── GROMACS templates ──────────────────────────────────────────────────
@@ -608,10 +615,10 @@ function DeleteConfirmPopup({
 
 // ── Results section sub-components ────────────────────────────────────
 
-type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure" | "ramachandran" | "custom_cv";
+type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure" | "ramachandran" | "custom_cv" | "mlcv";
 interface ResultCardDef { id: string; type: ResultCardType; meta?: CustomCVConfig }
 
-type EnergyCardType = Exclude<ResultCardType, "ramachandran" | "custom_cv">;
+type EnergyCardType = Exclude<ResultCardType, "ramachandran" | "custom_cv" | "mlcv">;
 const ENERGY_TERM_CONFIG: Record<EnergyCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
   energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
   energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
@@ -698,10 +705,10 @@ function EnergyCardContent({
         }
         setHasEdr(cached.has_edr ?? false);
 
-        // Step 2: if refresh was clicked and .edr exists, extract via gmx energy
-        if (isRefresh && cached.has_edr) {
+        // Step 2: if .edr exists but no cache, auto-extract via gmx energy
+        if (cached.has_edr) {
           setExtracting(true);
-          const extracted = await getEnergy(sessionId, { extract: true, maxPoints });
+          const extracted = await getEnergy(sessionId, { extract: true, force: isRefresh, maxPoints });
           if (cancelled) return;
           if (extracted.available) setData(extracted.data);
           setExtracting(false);
@@ -880,6 +887,10 @@ function ResultCard({
 
   if (card.type === "custom_cv" && card.meta) {
     return <CustomCVResultCard sessionId={sessionId} config={card.meta} onDelete={onDelete} />;
+  }
+
+  if (card.type === "mlcv") {
+    return <MLCVResultCard sessionId={sessionId} onDelete={onDelete} />;
   }
 
   return (
@@ -1456,6 +1467,140 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   );
 }
 
+function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
+  const [data, setData] = useState<Record<string, number[]> | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">("loading");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [spinning, setSpinning] = useState(false);
+  const accentColor = "#8b5cf6";
+
+  useEffect(() => {
+    setStatus("loading");
+    getColvar(sessionId, "COLVAR", 5000)
+      .then((res) => {
+        if (!res.available || !res.data) { setStatus("empty"); return; }
+        setData(res.data);
+        setStatus("ok");
+      })
+      .catch(() => setStatus("error"));
+  }, [sessionId, refreshKey]);
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+    setSpinning(true);
+    setTimeout(() => setSpinning(false), 800);
+  };
+
+  // Find MLCV columns: any column containing "mlcv" or "nn" or "pytorch" (case-insensitive),
+  // or fallback to non-time, non-bias columns if none match
+  const mlcvColumns = useMemo(() => {
+    if (!data) return [];
+    const keys = Object.keys(data).filter((k) => k.toLowerCase() !== "time" && !k.toLowerCase().includes("bias"));
+    const mlKeys = keys.filter((k) => /mlcv|nn|pytorch|model/i.test(k));
+    return mlKeys.length > 0 ? mlKeys : keys;
+  }, [data]);
+
+  const MLCV_COLORS = ["#8b5cf6", "#ec4899", "#06b6d4", "#f59e0b"];
+
+  const renderPlot = (compact: boolean) => {
+    if (!data || mlcvColumns.length === 0) return null;
+    const time = data["time"] ?? data[Object.keys(data)[0]] ?? [];
+    return (
+      <Plot
+        data={mlcvColumns.map((col, i) => ({
+          x: time,
+          y: data[col],
+          type: "scattergl" as const,
+          mode: "lines" as const,
+          name: col,
+          line: { color: MLCV_COLORS[i % MLCV_COLORS.length], width: compact ? 1.2 : 1.5 },
+        }))}
+        layout={{
+          margin: compact ? { t: 8, r: 8, b: 30, l: 40 } : { t: 16, r: 16, b: 40, l: 55 },
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          xaxis: { title: compact ? undefined : { text: "Time (ps)" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
+          yaxis: { title: compact ? undefined : { text: "MLCV value" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
+          legend: { font: { size: 10, color: "#9ca3af" }, x: 1, xanchor: "right" as const, y: 1 },
+          showlegend: mlcvColumns.length > 1,
+        }}
+        config={{ displayModeBar: false, responsive: true }}
+        style={{ width: "100%", height: "100%" }}
+      />
+    );
+  };
+
+  return (
+    <>
+      <div
+        className="flex-shrink-0 rounded-xl border bg-gray-50/70 dark:bg-gray-900/70 flex flex-col overflow-hidden"
+        style={{ width: "440px", height: "300px", borderColor: `${accentColor}30` }}
+      >
+        <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0" style={{ borderColor: `${accentColor}20` }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">MLCV</span>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
+              <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
+            </button>
+            <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
+              <Search size={13} />
+            </button>
+            <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
+          {status === "loading" && <Loader2 size={16} className="animate-spin text-gray-400" />}
+          {status === "error" && <span className="text-xs text-red-400">Failed to load COLVAR</span>}
+          {status === "empty" && <span className="text-xs text-gray-400">No COLVAR data yet</span>}
+          {status === "ok" && renderPlot(true)}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpanded(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>MLCV</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                  <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
+                </button>
+                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">{renderPlot(false)}</div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
+            <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+              <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function AddPlotModal({
   onSelect,
   onClose,
@@ -1463,6 +1608,7 @@ function AddPlotModal({
   existingTypes,
   systemName,
   sessionId,
+  mlcvUsed,
 }: {
   onSelect: (types: ResultCardType[]) => void;
   onClose: () => void;
@@ -1470,6 +1616,7 @@ function AddPlotModal({
   existingTypes: Set<ResultCardType>;
   systemName: string;
   sessionId: string;
+  mlcvUsed: boolean;
 }) {
   const [checked, setChecked] = useState<Set<ResultCardType>>(new Set());
 
@@ -1484,6 +1631,8 @@ function AddPlotModal({
   const isAla = systemName === "ala_dipeptide";
   const ramachandranAvailable = isAla && !existingTypes.has("ramachandran");
   const ramachandranAdded = existingTypes.has("ramachandran");
+  const mlcvAvailable = mlcvUsed && !existingTypes.has("mlcv");
+  const mlcvAdded = existingTypes.has("mlcv");
   const someSelected = availableTypes.some((t) => checked.has(t));
 
   const toggle = (t: ResultCardType) => {
@@ -1585,6 +1734,31 @@ function AddPlotModal({
               <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">ala dipeptide only</span>
             </div>
           )}
+          {mlcvAvailable ? (
+            <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <input
+                type="checkbox"
+                checked={checked.has("mlcv")}
+                onChange={() => toggle("mlcv")}
+                className="accent-violet-500 w-3.5 h-3.5 flex-shrink-0"
+              />
+              <span className="text-xs text-gray-700 dark:text-gray-300">MLCV</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">ML collective variable</span>
+            </label>
+          ) : mlcvAdded ? (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
+              <input type="checkbox" checked readOnly disabled className="accent-violet-500 w-3.5 h-3.5 flex-shrink-0" />
+              <span className="text-xs text-gray-700 dark:text-gray-300">MLCV</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">ML collective variable</span>
+              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
+              <Lock size={11} className="text-gray-600 flex-shrink-0" />
+              <span className="text-xs text-gray-500 dark:text-gray-400">MLCV</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">requires MLCV setup</span>
+            </div>
+          )}
           <button
             onClick={() => { onClose(); onCustomCV(); }}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
@@ -1642,6 +1816,9 @@ const BYTES_PER_FRAME_FIXED: Record<string, number> = {
 const SYSTEM_ATOMS: Record<string, number> = {
   ala_dipeptide: 22,
   chignolin: 6000,   // ~175 atoms + ~5800 solvent
+  trp_cage: 8000,    // ~272 atoms + ~7700 solvent
+  bba: 10000,        // ~504 atoms + ~9500 solvent
+  villin: 12000,     // ~577 atoms + ~11400 solvent
   protein: 5000,     // generic small protein estimate
   membrane: 40000,
 };
@@ -1725,7 +1902,7 @@ function SimRunConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-md"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -2014,6 +2191,7 @@ function ProgressTab({
   resultCards,
   setResultCards,
   systemName,
+  mlcvUsed,
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed" | "paused";
@@ -2025,6 +2203,7 @@ function ProgressTab({
   resultCards: ResultCardDef[];
   setResultCards: React.Dispatch<React.SetStateAction<ResultCardDef[]>>;
   systemName: string;
+  mlcvUsed: boolean;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const [allFiles, setAllFiles] = useState<string[]>([]);
@@ -2298,6 +2477,7 @@ function ProgressTab({
           existingTypes={new Set(resultCards.map((c) => c.type))}
           systemName={systemName}
           sessionId={sessionId}
+          mlcvUsed={mlcvUsed}
         />
       )}
 
@@ -2794,6 +2974,17 @@ function GromacsTab({
               options={[
                 { value: "none",  label: "Vacuum"      },
                 { value: "tip3p", label: "TIP3P Water" },
+              ]}
+            />
+            <SelectField
+              label="Box type"
+              value={String(gromacs.box_type ?? "cubic")}
+              onChange={(v) => onChange("gromacs.box_type", v)}
+              onSave={onSave}
+              options={[
+                { value: "cubic",        label: "Cubic" },
+                { value: "dodecahedron", label: "Dodecahedron" },
+                { value: "octahedron",   label: "Octahedron" },
               ]}
             />
             <Field
@@ -4430,8 +4621,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         const mappedStatus: "standby" | "running" | "finished" | "failed" | "paused" =
           status.status === "finished" ? "finished"
             : status.status === "failed" ? "failed"
+            : (status.status as string) === "paused" ? "paused"
             : status.running ? "running"
-            : simRunStatusRef.current === "running" ? "finished"
+            : simRunStatusRef.current === "running"
+              ? (status.exit_code != null && status.exit_code !== 0 ? "failed" : "finished")
             : "standby";
         setSimRunStatus(mappedStatus);
         if (mappedStatus === "failed") setSimExitCode(status.exit_code ?? null);
@@ -4665,6 +4858,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             resultCards={resultCards}
             setResultCards={setResultCards}
             systemName={(cfg.system as Record<string, unknown>)?.name as string ?? ""}
+            mlcvUsed={!!((cfg.plumed as Record<string, unknown> | undefined)?.collective_variables as Record<string, unknown> | undefined)?.mlcv_checkpoint}
           />
         );
       case "molecule":
@@ -4787,16 +4981,16 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
       {/* Pause confirmation dialog */}
       {pauseConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
-            <h3 className="text-sm font-semibold text-gray-100 mb-2">Pause Simulation?</h3>
-            <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause Simulation?</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setPauseConfirmOpen(false)}
-                className="px-4 py-2 text-xs text-gray-400 hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-800"
+                className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
