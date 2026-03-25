@@ -80,7 +80,6 @@ import {
   loadMolecule,
   validateCheckpoint,
   getColvar,
-  fetchPdb,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
