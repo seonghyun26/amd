@@ -80,6 +80,7 @@ import {
   loadMolecule,
   validateCheckpoint,
   getColvar,
+  fetchPdb,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -2828,7 +2829,15 @@ function MoleculeTab({
       )}
 
       {agentOpen && (
-        <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
+        <AgentModal
+          sessionId={sessionId}
+          agentType="paper"
+          onClose={() => setAgentOpen(false)}
+          onPdbLoaded={(mol) => {
+            onSelectMolecule(mol);
+            setFileRefresh((n) => n + 1);
+          }}
+        />
       )}
       {previewPath && (
         <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Play, StopCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { streamAgent, type AgentType } from "@/lib/agentStream";
+import { fetchPdb, getFileContent } from "@/lib/api";
 import type { SSEEvent, ToolCallBlock, ThinkingBlock, TextBlock, ErrorBlock } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -154,9 +155,12 @@ interface Props {
   sessionId: string;
   agentType: AgentType;
   onClose: () => void;
+  onPdbLoaded?: (molecule: { content: string; name: string }) => void;
 }
 
-export default function AgentModal({ sessionId, agentType, onClose }: Props) {
+const PDB_ID_RE = /^[0-9A-Za-z]{4}$/;
+
+export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded }: Props) {
   const config = AGENT_CONFIGS[agentType];
   const [input, setInput] = useState(config.defaultInput ?? "");
   const [blocks, setBlocks] = useState<AgentBlock[]>([]);
@@ -182,18 +186,13 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
     indigo: "bg-indigo-100/60 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400",
   }[config.accent];
 
-  const handleRun = async () => {
-    if (running) return;
-    setBlocks([]);
-    setRunning(true);
-
+  const runFullAgent = async (query: string) => {
     abortRef.current = new AbortController();
-
     try {
       for await (const event of streamAgent(
         sessionId,
         agentType,
-        input || config.defaultInput || "",
+        query,
         abortRef.current.signal
       )) {
         setBlocks((prev) => applyEvent(prev, event));
@@ -209,6 +208,51 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
       }
       setRunning(false);
     }
+  };
+
+  const handleRun = async () => {
+    if (running) return;
+    setBlocks([]);
+    setRunning(true);
+
+    const query = input.trim() || config.defaultInput || "";
+
+    // For the paper agent, try a direct PDB fetch first if input looks like a PDB ID
+    if (agentType === "paper" && PDB_ID_RE.test(query)) {
+      setBlocks([{
+        kind: "tool_call",
+        tool_use_id: "pdb-quick",
+        tool_name: "download_pdb_to_session",
+        input: { pdb_id: query.toUpperCase() },
+        status: "pending",
+      }]);
+      try {
+        const { filename } = await fetchPdb(sessionId, query);
+        setBlocks((prev) => prev.map((b) =>
+          b.kind === "tool_call" && b.tool_use_id === "pdb-quick"
+            ? { ...b, status: "done" as const, result: `Downloaded ${filename}` }
+            : b
+        ));
+        setBlocks((prev) => [...prev, { kind: "text", content: `Successfully downloaded ${filename} from RCSB PDB.` }]);
+        if (onPdbLoaded) {
+          try {
+            const content = await getFileContent(sessionId, filename);
+            onPdbLoaded({ content, name: filename });
+          } catch { /* viewer load is best-effort */ }
+        }
+        setRunning(false);
+        return;
+      } catch {
+        // PDB fetch failed — fall through to full agent
+        setBlocks((prev) => prev.map((b) =>
+          b.kind === "tool_call" && b.tool_use_id === "pdb-quick"
+            ? { ...b, status: "error" as const, result: `Not found in RCSB — falling back to agent` }
+            : b
+        ));
+      }
+    }
+
+    await runFullAgent(query);
   };
 
   const handleStop = () => {

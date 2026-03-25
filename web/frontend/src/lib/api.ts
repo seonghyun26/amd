@@ -201,6 +201,20 @@ export async function getFileContent(sessionId: string, path: string): Promise<s
   return res.text();
 }
 
+// ── PDB fetch ────────────────────────────────────────────────────────
+
+export async function fetchPdb(
+  sessionId: string,
+  pdbId: string
+): Promise<{ saved_path: string; filename: string; size_bytes: number }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/pdb/fetch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pdb_id: pdbId }),
+  });
+  return json(res);
+}
+
 // ── Analysis ──────────────────────────────────────────────────────────
 
 export async function getColvar(

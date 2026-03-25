@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import zipfile
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Body, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from md_agent.utils.file_utils import list_files
 from web.backend.session_manager import get_or_restore_session
@@ -208,3 +211,37 @@ async def restore_file(session_id: str, path: str = Body(..., embed=True)):
 
     shutil.move(str(target), str(dest))
     return {"restored": str(dest)}
+
+
+# ── PDB fetch ────────────────────────────────────────────────────────
+
+_PDB_ID_RE = re.compile(r"^[0-9A-Za-z]{4}$")
+
+
+class PdbFetchRequest(BaseModel):
+    pdb_id: str
+
+
+@router.post("/sessions/{session_id}/pdb/fetch")
+async def fetch_pdb(session_id: str, req: PdbFetchRequest):
+    """Download a PDB file from RCSB by its 4-character ID."""
+    session = get_or_restore_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    pdb_id = req.pdb_id.strip().upper()
+    if not _PDB_ID_RE.match(pdb_id):
+        raise HTTPException(400, "Invalid PDB ID — must be exactly 4 alphanumeric characters")
+
+    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url)
+
+    if resp.status_code == 404:
+        raise HTTPException(404, f"PDB ID '{pdb_id}' not found in the RCSB database")
+    if resp.status_code != 200:
+        raise HTTPException(502, f"RCSB returned status {resp.status_code}")
+
+    dest = Path(session.work_dir) / f"{pdb_id}.pdb"
+    dest.write_bytes(resp.content)
+    return {"saved_path": str(dest), "filename": f"{pdb_id}.pdb", "size_bytes": len(resp.content)}

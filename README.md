@@ -67,6 +67,13 @@ GMX_DOCKER_IMAGE=gromacs-plumed:latest
 
 API keys can also be set per-user in the web UI under **Settings > API Keys**.
 
+### 6. Adding users
+
+```python
+from web.backend.db import add_user
+add_user("username", "password")
+```
+
 ## Running
 
 ```bash
