@@ -117,6 +117,9 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [gifGenerating, setGifGenerating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef                     = useRef<HTMLDivElement>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 4 | 10 | 100>(1);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const speedMenuRef                    = useRef<HTMLDivElement>(null);
 
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSeeking = useRef(false);
@@ -137,6 +140,18 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [settingsOpen]);
+
+  // Close speed menu on outside click
+  useEffect(() => {
+    if (!speedMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target as Node)) {
+        setSpeedMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [speedMenuOpen]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applyRepresentations = (component: any, currentReps?: typeof reps) => {
@@ -319,8 +334,18 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
   }, [theme]);
 
-  const handlePlay = () => {
+  const applySpeed = (player: typeof playerRef.current, speed: number) => {
+    if (!player) return;
+    const baseTimeout = 80;
+    // For high speeds, reduce timeout and increase step to skip frames
+    const step = speed >= 10 ? Math.max(1, Math.floor(speed / 4)) : 1;
+    const timeout = Math.max(1, Math.round(baseTimeout / Math.min(speed, 10)));
+    player.setParameters({ timeout, step });
+  };
+
+  const handlePlay = (speed?: 1 | 2 | 4 | 10 | 100) => {
     if (!playerRef.current) return;
+    applySpeed(playerRef.current, speed ?? playbackSpeed);
     playerRef.current.play();
     setPlaying(true);
   };
@@ -329,6 +354,19 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     if (!playerRef.current) return;
     playerRef.current.pause();
     setPlaying(false);
+  };
+
+  const handleSpeedChange = (speed: 1 | 2 | 4 | 10 | 100) => {
+    setPlaybackSpeed(speed);
+    setSpeedMenuOpen(false);
+    if (playerRef.current) {
+      applySpeed(playerRef.current, speed);
+      // If currently playing, restart to pick up new parameters immediately
+      if (playing) {
+        playerRef.current.pause();
+        playerRef.current.play();
+      }
+    }
   };
 
   const handleSeek = (nextFrame: number) => {
@@ -560,22 +598,50 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           })}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handlePlay}
-            disabled={!ready || playing || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 dark:hover:bg-emerald-800/40 disabled:opacity-40"
-          >
-            <Play size={11} />
-            Play
-          </button>
-          <button
-            onClick={handlePause}
-            disabled={!ready || !playing || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-amber-300/60 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-800/40 disabled:opacity-40"
-          >
-            <Pause size={11} />
-            Pause
-          </button>
+          {/* Play / Speed split button */}
+          <div className="relative flex" ref={speedMenuRef}>
+            <button
+              onClick={() => playing ? handlePause() : handlePlay()}
+              disabled={!ready || gifGenerating}
+              className={`flex items-center justify-center gap-1.5 w-[68px] py-1 rounded-l-md text-xs border disabled:opacity-40 ${
+                playing
+                  ? "border-amber-300/60 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-800/40"
+                  : "border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 dark:hover:bg-emerald-800/40"
+              }`}
+            >
+              {playing ? <Pause size={11} /> : <Play size={11} />}
+              {playing ? "Pause" : "Play"}
+            </button>
+            <button
+              onClick={() => setSpeedMenuOpen((v) => !v)}
+              disabled={!ready || gifGenerating}
+              className={`flex items-center justify-center w-[36px] py-1 rounded-r-md text-xs border border-l-0 disabled:opacity-40 ${
+                playing
+                  ? "border-amber-300/60 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-800/40"
+                  : "border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 dark:hover:bg-emerald-800/40"
+              }`}
+              title="Playback speed"
+            >
+              <span className="text-[10px] font-semibold">{playbackSpeed}x</span>
+            </button>
+            {speedMenuOpen && (
+              <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-30">
+                {([1, 2, 4, 10, 100] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => handleSpeedChange(s)}
+                    className={`block w-full px-4 py-1.5 text-xs text-left transition-colors ${
+                      playbackSpeed === s
+                        ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {s}x
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={handleResetView}
             disabled={!ready || gifGenerating}

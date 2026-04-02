@@ -5,6 +5,7 @@ import { X, Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-rea
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles } from "@/lib/api";
 import { CV_PALETTE } from "@/lib/colors";
+import { useTheme } from "@/lib/theme";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -67,6 +68,7 @@ interface Props {
 }
 
 export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef = useRef<any>(null);
@@ -155,7 +157,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
     containerRef.current.innerHTML = "";
 
     suppressNglDeprecationWarnings();
-    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "transparent" });
+    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
     stageRef.current = stage;
 
     const ro = new ResizeObserver(() => stage.handleResize());

@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AMD — Ahn MD",
+  title: "AMD — Automating MD",
   description: "Claude-powered molecular dynamics simulation assistant",
   icons: { icon: "/icon.svg" },
 };

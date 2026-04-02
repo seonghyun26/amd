@@ -900,7 +900,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">AMD</div>
-          <div className="text-[11px] text-gray-400 dark:text-gray-500">Ahn MD</div>
+          <div className="text-[11px] text-gray-400 dark:text-gray-500">Automating MD</div>
         </div>
         <button
           onClick={() => setCollapsed(true)}

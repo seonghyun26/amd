@@ -136,10 +136,16 @@ def init_db() -> None:
                 finished_at      REAL,
                 status           TEXT NOT NULL DEFAULT 'active',
                 updated_at       TEXT NOT NULL DEFAULT '',
-                json_path        TEXT NOT NULL DEFAULT ''
+                json_path        TEXT NOT NULL DEFAULT '',
+                result_cards     TEXT NOT NULL DEFAULT '[]'
             )
         """
         )
+        # Migration: add result_cards column to existing sessions table
+        try:
+            con.execute("ALTER TABLE sessions ADD COLUMN result_cards TEXT NOT NULL DEFAULT '[]'")
+        except Exception:
+            pass  # column already exists
         for username, password in _DEFAULT_USERS:
             exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
             if not exists:
@@ -207,18 +213,24 @@ def change_password(username: str, new_password: str) -> bool:
 _SESSION_COLS = (
     "session_id", "work_dir", "nickname", "username", "run_status",
     "selected_molecule", "started_at", "finished_at", "status", "updated_at", "json_path",
+    "result_cards",
 )
 
 
 def upsert_session(data: dict) -> None:
     """Insert or update a session in the index."""
+    import json as _json
+    rc = data.get("result_cards", [])
+    rc_json = _json.dumps(rc) if isinstance(rc, list) else (rc if isinstance(rc, str) else "[]")
     with _conn() as con:
         con.execute(
             """
             INSERT INTO sessions (session_id, work_dir, nickname, username, run_status,
-                                  selected_molecule, started_at, finished_at, status, updated_at, json_path)
+                                  selected_molecule, started_at, finished_at, status, updated_at, json_path,
+                                  result_cards)
             VALUES (:session_id, :work_dir, :nickname, :username, :run_status,
-                    :selected_molecule, :started_at, :finished_at, :status, :updated_at, :json_path)
+                    :selected_molecule, :started_at, :finished_at, :status, :updated_at, :json_path,
+                    :result_cards)
             ON CONFLICT(session_id) DO UPDATE SET
                 work_dir          = excluded.work_dir,
                 nickname          = excluded.nickname,
@@ -229,7 +241,8 @@ def upsert_session(data: dict) -> None:
                 finished_at       = excluded.finished_at,
                 status            = excluded.status,
                 updated_at        = excluded.updated_at,
-                json_path         = excluded.json_path
+                json_path         = excluded.json_path,
+                result_cards      = excluded.result_cards
             """,
             {
                 "session_id": data.get("session_id", ""),
@@ -243,18 +256,23 @@ def upsert_session(data: dict) -> None:
                 "status": data.get("status", "active"),
                 "updated_at": data.get("updated_at", ""),
                 "json_path": data.get("json_path", ""),
+                "result_cards": rc_json,
             },
         )
 
 
 def update_session_index(session_id: str, updates: dict) -> None:
     """Update specific fields of a session in the index."""
+    import json as _json
     if not updates:
         return
     allowed = set(_SESSION_COLS) - {"session_id"}
     fields = {k: v for k, v in updates.items() if k in allowed}
     if not fields:
         return
+    # Serialize result_cards list to JSON string for SQLite TEXT column
+    if "result_cards" in fields and isinstance(fields["result_cards"], list):
+        fields["result_cards"] = _json.dumps(fields["result_cards"])
     set_clause = ", ".join(f"{k} = :{k}" for k in fields)
     fields["session_id"] = session_id
     with _conn() as con:
@@ -263,6 +281,7 @@ def update_session_index(session_id: str, updates: dict) -> None:
 
 def list_sessions_indexed(username: str = "") -> list[dict]:
     """Fast session listing from SQLite index."""
+    import json as _json
     with _conn() as con:
         con.row_factory = sqlite3.Row
         if username:
@@ -274,7 +293,18 @@ def list_sessions_indexed(username: str = "") -> list[dict]:
             rows = con.execute(
                 "SELECT * FROM sessions WHERE status != 'deleted' ORDER BY updated_at DESC"
             ).fetchall()
-    return [dict(row) for row in rows]
+    results = []
+    for row in rows:
+        d = dict(row)
+        # Deserialize result_cards from JSON string
+        rc = d.get("result_cards", "[]")
+        if isinstance(rc, str):
+            try:
+                d["result_cards"] = _json.loads(rc)
+            except Exception:
+                d["result_cards"] = []
+        results.append(d)
+    return results
 
 
 def get_session_indexed(session_id: str) -> dict | None:

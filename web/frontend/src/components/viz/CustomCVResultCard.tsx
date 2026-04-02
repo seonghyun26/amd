@@ -12,14 +12,15 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { computeCustomCV, type CVDefinition, type CustomCVConfig } from "@/lib/api";
+import { useTheme } from "@/lib/theme";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 // ── Constants ─────────────────────────────────────────────────────────
 
 const COLORMAPS = [
-  "Blues", "viridis", "Plasma", "Inferno", "Magma",
-  "Cividis", "YlGnBu", "PuBu", "BuPu", "Hot",
+  "Viridis", "Plasma", "Inferno", "Magma", "Cividis",
+  "Blues", "YlGnBu", "PuBu", "BuPu", "Hot",
 ] as const;
 
 function cvShortLabel(cv: CVDefinition): string {
@@ -40,21 +41,24 @@ function unitLabel(cv: CVDefinition): string {
 
 // ── Plotly layout helpers ────────────────────────────────────────────
 
-const DARK_AXIS = {
-  gridcolor: "#1f2937",
-  zerolinecolor: "#374151",
-  tickfont: { size: 9 },
-};
+function axisStyle(isDark: boolean) {
+  return {
+    gridcolor: isDark ? "#1f2937" : "#e5e7eb",
+    zerolinecolor: isDark ? "#374151" : "#d1d5db",
+    tickfont: { size: 9, color: isDark ? "#9ca3af" : "#6b7280" },
+  };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function darkLayout(overrides: Record<string, any> = {}): Record<string, any> {
+function themedLayout(isDark: boolean, overrides: Record<string, any> = {}): Record<string, any> {
+  const axis = axisStyle(isDark);
   return {
     paper_bgcolor: "transparent",
-    plot_bgcolor: "transparent",
-    font: { color: "#9ca3af", size: 10 },
+    plot_bgcolor: isDark ? "transparent" : "rgba(249,250,251,0.8)",
+    font: { color: isDark ? "#9ca3af" : "#374151", size: 10 },
     margin: { l: 48, r: 12, t: 8, b: 40 },
-    xaxis: { ...DARK_AXIS },
-    yaxis: { ...DARK_AXIS },
+    xaxis: { ...axis },
+    yaxis: { ...axis },
     ...overrides,
   };
 }
@@ -68,12 +72,17 @@ interface DensitySettings {
 }
 
 const DENSITY_DEFAULTS: DensitySettings = {
-  colorscale: "viridis",
+  colorscale: "Viridis",
   nbins: 60,
   logScale: true,
 };
 
 const DENSITY_STORAGE_KEY = "amd-cv-density-settings";
+
+// Canonical colorscale names (Plotly is case-sensitive)
+const _COLORSCALE_MAP: Record<string, string> = Object.fromEntries(
+  COLORMAPS.map((c) => [c.toLowerCase(), c])
+);
 
 function loadDensitySettings(): DensitySettings {
   if (typeof window === "undefined") return { ...DENSITY_DEFAULTS };
@@ -81,7 +90,10 @@ function loadDensitySettings(): DensitySettings {
     const raw = localStorage.getItem(DENSITY_STORAGE_KEY);
     if (!raw) return { ...DENSITY_DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<DensitySettings>;
-    return { ...DENSITY_DEFAULTS, ...parsed };
+    const merged = { ...DENSITY_DEFAULTS, ...parsed };
+    // Normalize colorscale casing from legacy stored values
+    merged.colorscale = _COLORSCALE_MAP[merged.colorscale.toLowerCase()] ?? DENSITY_DEFAULTS.colorscale;
+    return merged;
   } catch {
     return { ...DENSITY_DEFAULTS };
   }
@@ -95,14 +107,16 @@ function SettingsDropdown({
   settings,
   onChange,
   onClose,
+  showDensity = true,
 }: {
   settings: DensitySettings;
   onChange: <K extends keyof DensitySettings>(key: K, val: DensitySettings[K]) => void;
   onClose: () => void;
+  showDensity?: boolean;
 }) {
   return (
-    <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+    <div className="fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs" style={{ transform: "translateY(-100%) translateY(-8px)" }}>
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 rounded-t-xl">
         <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
           <X size={12} />
@@ -110,27 +124,31 @@ function SettingsDropdown({
       </div>
       <div className="p-3 space-y-3">
         <div className="flex items-center gap-2">
-          <span className="w-20 text-gray-500 dark:text-gray-400 flex-shrink-0">Bins</span>
-          <input type="range" min={20} max={150} step={10} value={settings.nbins}
-            onChange={(e) => onChange("nbins", Number(e.target.value))}
-            className="flex-1 accent-cyan-500 h-1" />
-          <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{settings.nbins}</span>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="w-20 text-gray-500 dark:text-gray-400 flex-shrink-0">Colormap</span>
           <select value={settings.colorscale} onChange={(e) => onChange("colorscale", e.target.value)}
             className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 text-gray-700 dark:text-gray-200 text-xs focus:outline-none focus:border-cyan-600">
             {COLORMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <div className="border-t border-gray-200 dark:border-gray-800" />
-        <div className="flex items-center justify-between">
-          <span className="text-gray-500 dark:text-gray-400">Log scale</span>
-          <button onClick={() => onChange("logScale", !settings.logScale)}
-            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.logScale ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}>
-            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${settings.logScale ? "left-[18px]" : "left-0.5"}`} />
-          </button>
-        </div>
+        {showDensity && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="w-20 text-gray-500 dark:text-gray-400 flex-shrink-0">Bins</span>
+              <input type="range" min={20} max={150} step={10} value={settings.nbins}
+                onChange={(e) => onChange("nbins", Number(e.target.value))}
+                className="flex-1 accent-cyan-500 h-1" />
+              <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{settings.nbins}</span>
+            </div>
+            <div className="border-t border-gray-200 dark:border-gray-800" />
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Log scale</span>
+              <button onClick={() => onChange("logScale", !settings.logScale)}
+                className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.logScale ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${settings.logScale ? "left-[18px]" : "left-0.5"}`} />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -162,6 +180,8 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const numCVs = config.cvs.length;
   const accentColor = numCVs === 1 ? "#f59e0b" : numCVs === 2 ? "#06b6d4" : "#a78bfa";
 
@@ -205,13 +225,14 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
     fetchData(true);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!data) return;
     const labels = data.cv_labels as string[];
     const timePsArr = data.time_ps as number[];
     if (!timePsArr || timePsArr.length === 0) return;
+    const baseName = `custom_cv_${labels.join("_")}`;
 
-    // Build CSV
+    // 1. Download CSV
     const header = ["time_ps", ...labels].join(",");
     const rows = timePsArr.map((t, i) => {
       const vals = labels.map((l) => {
@@ -221,13 +242,34 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       return [t, ...vals].join(",");
     });
     const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `custom_cv_${labels.join("_")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const csvBlob = new Blob([csv], { type: "text/csv" });
+    const csvUrl = URL.createObjectURL(csvBlob);
+    const csvLink = document.createElement("a");
+    csvLink.href = csvUrl;
+    csvLink.download = `${baseName}.csv`;
+    csvLink.click();
+    URL.revokeObjectURL(csvUrl);
+
+    // 2. Download PNG via Plotly (access from window global set by react-plotly.js)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const Plotly = (window as any).Plotly;
+      if (Plotly?.toImage) {
+        const plotData = buildPlot(false);
+        if (plotData) {
+          const imgUrl = await Plotly.toImage(
+            { data: plotData.traces, layout: { ...plotData.layout, width: 800, height: 600 } },
+            { format: "png", width: 800, height: 600, scale: 2 }
+          );
+          const pngLink = document.createElement("a");
+          pngLink.href = imgUrl;
+          pngLink.download = `${baseName}.png`;
+          pngLink.click();
+        }
+      }
+    } catch {
+      // PNG export is best-effort — CSV was already downloaded
+    }
   };
 
   // ── Build Plotly traces & layout ──────────────────────────────────
@@ -241,6 +283,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       const cv = config.cvs[0];
       const yVals = data[labels[0]] as number[];
       if (!yVals) return null;
+      const ax = axisStyle(isDark);
       return {
         traces: [{
           type: "scatter" as const,
@@ -252,9 +295,9 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
           line: { color: "#f59e0b", width: compact ? 1.5 : 2, shape: "spline" as const },
           hovertemplate: `%{x:.1f} ps<br>%{y:.3f} ${unitLabel(cv)}<extra></extra>`,
         }],
-        layout: darkLayout({
-          xaxis: { ...DARK_AXIS, title: { text: "Time (ps)", font: { size: 9, color: "#6b7280" } } },
-          yaxis: { ...DARK_AXIS, title: { text: `${cv.label} (${unitLabel(cv)})`, font: { size: 9, color: "#6b7280" } } },
+        layout: themedLayout(isDark, {
+          xaxis: { ...ax, title: { text: "Time (ps)", font: { size: 9, color: isDark ? "#6b7280" : "#9ca3af" } } },
+          yaxis: { ...ax, title: { text: `${cv.label} (${unitLabel(cv)})`, font: { size: 9, color: isDark ? "#6b7280" : "#9ca3af" } } },
         }),
       };
     }
@@ -265,24 +308,24 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       const xVals = data[labels[0]] as number[];
       const yVals = data[labels[1]] as number[];
       if (!xVals || !yVals) return null;
+      const ax2 = axisStyle(isDark);
+      const titleColor = isDark ? "#6b7280" : "#9ca3af";
       return {
         traces: [{
-          type: "histogram2dcontour" as const,
+          type: "histogram2d" as const,
           x: xVals,
           y: yVals,
           colorscale: densitySettings.colorscale,
-          colorbar: { thickness: 8, len: 0.6 },
-          contours: { coloring: "heatmap" as const },
-          line: { width: 0 },
+          colorbar: { thickness: 8, len: 0.6, tickfont: { color: isDark ? "#9ca3af" : "#6b7280" } },
           nbinsx: densitySettings.nbins,
           nbinsy: densitySettings.nbins,
-          zauto: !densitySettings.logScale,
+          zauto: true,
           hovertemplate: `${cv1.label}: %{x:.2f}<br>${cv2.label}: %{y:.2f}<br>Count: %{z}<extra></extra>`,
         }],
-        layout: darkLayout({
+        layout: themedLayout(isDark, {
           margin: compact ? { l: 40, r: 8, t: 8, b: 36 } : { l: 52, r: 12, t: 8, b: 44 },
-          xaxis: { ...DARK_AXIS, title: { text: `${cv1.label} (${unitLabel(cv1)})`, font: { size: 9, color: "#6b7280" } } },
-          yaxis: { ...DARK_AXIS, title: { text: `${cv2.label} (${unitLabel(cv2)})`, font: { size: 9, color: "#6b7280" } } },
+          xaxis: { ...ax2, title: { text: `${cv1.label} (${unitLabel(cv1)})`, font: { size: 9, color: titleColor } } },
+          yaxis: { ...ax2, title: { text: `${cv2.label} (${unitLabel(cv2)})`, font: { size: 9, color: titleColor } } },
         }),
       };
     }
@@ -295,6 +338,10 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       const yVals = data[labels[1]] as number[];
       const zVals = data[labels[2]] as number[];
       if (!xVals || !yVals || !zVals) return null;
+      const sceneGrid = isDark ? "#374151" : "#000000";
+      const sceneBg = isDark ? "#111827" : "#f9fafb";
+      const sceneTick = { size: 8, color: isDark ? "#d1d5db" : "#000000" };
+      const sceneTitle = { size: 9, color: isDark ? "#d1d5db" : "#000000" };
       return {
         traces: [{
           type: "scatter3d" as const,
@@ -303,22 +350,23 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
           y: yVals,
           z: zVals,
           marker: {
-            size: compact ? 1.5 : 2.5,
+            size: compact ? 1.5 : 3,
             color: timePsRaw,
-            colorscale: "viridis",
-            colorbar: compact ? undefined : { title: { text: "Time (ps)", font: { size: 9 } }, thickness: 8, len: 0.5 },
-            opacity: 0.7,
+            colorscale: densitySettings.colorscale,
+            colorbar: compact ? undefined : { title: { text: "Time (ps)", font: { size: 9, color: isDark ? "#d1d5db" : "#000000" } }, thickness: 8, len: 0.5, tickfont: { color: isDark ? "#d1d5db" : "#000000" } },
+            opacity: 0.8,
           },
           hovertemplate: `${cv1.label}: %{x:.2f}<br>${cv2.label}: %{y:.2f}<br>${cv3.label}: %{z:.2f}<extra></extra>`,
         }],
-        layout: darkLayout({
+        layout: themedLayout(isDark, {
           margin: compact ? { l: 0, r: 0, t: 0, b: 0 } : { l: 0, r: 0, t: 0, b: 0 },
           scene: {
-            xaxis: { title: { text: cv1.label, font: { size: 9 } }, gridcolor: "#1f2937", backgroundcolor: "transparent", tickfont: { size: 8 } },
-            yaxis: { title: { text: cv2.label, font: { size: 9 } }, gridcolor: "#1f2937", backgroundcolor: "transparent", tickfont: { size: 8 } },
-            zaxis: { title: { text: cv3.label, font: { size: 9 } }, gridcolor: "#1f2937", backgroundcolor: "transparent", tickfont: { size: 8 } },
-            bgcolor: "transparent",
-            camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } },
+            aspectmode: "data",
+            xaxis: { title: { text: cv1.label, font: sceneTitle }, gridcolor: sceneGrid, backgroundcolor: sceneBg, tickfont: sceneTick, linecolor: isDark ? "#6b7280" : "#000000", linewidth: 1 },
+            yaxis: { title: { text: cv2.label, font: sceneTitle }, gridcolor: sceneGrid, backgroundcolor: sceneBg, tickfont: sceneTick, linecolor: isDark ? "#6b7280" : "#000000", linewidth: 1 },
+            zaxis: { title: { text: cv3.label, font: sceneTitle }, gridcolor: sceneGrid, backgroundcolor: sceneBg, tickfont: sceneTick, linecolor: isDark ? "#6b7280" : "#000000", linewidth: 1 },
+            bgcolor: sceneBg,
+            camera: { eye: { x: 1.6, y: 1.6, z: 1.0 } },
           },
         }),
       };
@@ -368,10 +416,10 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
     );
   };
 
-  // ── Settings gear (shown in both card and expanded for 2-CV) ──────
+  // ── Settings gear (shown for 2-CV and 3-CV plots) ─────────────────
 
   const renderSettingsGear = (size: number) => {
-    if (numCVs !== 2) return null;
+    if (numCVs < 2) return null;
     return (
       <div className="relative" ref={settingsRef}>
         <button
@@ -390,6 +438,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
             settings={densitySettings}
             onChange={(key, val) => setDensitySettings((prev) => ({ ...prev, [key]: val }))}
             onClose={() => setSettingsOpen(false)}
+            showDensity={numCVs === 2}
           />
         )}
       </div>
@@ -467,8 +516,8 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
                   className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   <Download size={13} />
                 </button>
-                {/* Settings gear (2-CV mode) */}
-                {numCVs === 2 && (
+                {/* Settings gear (2-CV and 3-CV modes) */}
+                {numCVs >= 2 && (
                   <div className="relative" ref={settingsRef}>
                     <button
                       onClick={() => setSettingsOpen((v) => !v)}
@@ -484,6 +533,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
                         settings={densitySettings}
                         onChange={(key, val) => setDensitySettings((prev) => ({ ...prev, [key]: val }))}
                         onClose={() => setSettingsOpen(false)}
+                        showDensity={numCVs === 2}
                       />
                     )}
                   </div>
